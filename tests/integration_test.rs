@@ -44,7 +44,8 @@ async fn test_init_command_integration() {
     println!("Testing init command...");
     println!("⚠ WARNING: This will copy all data from source to target!");
 
-    let result = commands::init(&source_url, &target_url).await;
+    // Skip confirmation for automated tests
+    let result = commands::init(&source_url, &target_url, true).await;
 
     match &result {
         Ok(_) => {

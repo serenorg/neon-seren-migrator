@@ -2,16 +2,19 @@
 // ABOUTME: Performs full database dump and restore from source to target
 
 use crate::{migration, postgres};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
+use std::io::{self, Write};
 use tempfile::TempDir;
 
 /// Initial migration command for schema and data copy
 ///
-/// Performs a full database dump and restore from source to target in four steps:
-/// 1. Dumps global objects (roles, tablespaces) from source
-/// 2. Restores global objects to target
-/// 3. Discovers all user databases on source
-/// 4. Migrates each database (schema and data)
+/// Performs a full database dump and restore from source to target in steps:
+/// 1. Estimates database sizes and migration times
+/// 2. Prompts for confirmation (unless skip_confirmation is true)
+/// 3. Dumps global objects (roles, tablespaces) from source
+/// 4. Restores global objects to target
+/// 5. Discovers all user databases on source
+/// 6. Migrates each database (schema and data)
 ///
 /// Uses temporary directory for dump files, which is automatically cleaned up.
 ///
@@ -19,6 +22,7 @@ use tempfile::TempDir;
 ///
 /// * `source_url` - PostgreSQL connection string for source (Neon) database
 /// * `target_url` - PostgreSQL connection string for target (Seren) database
+/// * `skip_confirmation` - Skip the size estimation and confirmation prompt
 ///
 /// # Returns
 ///
@@ -32,6 +36,7 @@ use tempfile::TempDir;
 /// - Cannot connect to source database
 /// - Database discovery fails
 /// - Any database migration fails
+/// - User declines confirmation prompt
 ///
 /// # Examples
 ///
@@ -39,14 +44,23 @@ use tempfile::TempDir;
 /// # use anyhow::Result;
 /// # use neon_seren_migrator::commands::init;
 /// # async fn example() -> Result<()> {
+/// // With confirmation prompt
 /// init(
 ///     "postgresql://user:pass@neon.tech/sourcedb",
-///     "postgresql://user:pass@seren.example.com/targetdb"
+///     "postgresql://user:pass@seren.example.com/targetdb",
+///     false
+/// ).await?;
+///
+/// // Skip confirmation (automated scripts)
+/// init(
+///     "postgresql://user:pass@neon.tech/sourcedb",
+///     "postgresql://user:pass@seren.example.com/targetdb",
+///     true
 /// ).await?;
 /// # Ok(())
 /// # }
 /// ```
-pub async fn init(source_url: &str, target_url: &str) -> Result<()> {
+pub async fn init(source_url: &str, target_url: &str, skip_confirmation: bool) -> Result<()> {
     tracing::info!("Starting initial migration...");
 
     // Create temporary directory for dump files
@@ -78,6 +92,16 @@ pub async fn init(source_url: &str, target_url: &str) -> Result<()> {
     }
 
     tracing::info!("Found {} database(s) to migrate", databases.len());
+
+    // Estimate database sizes and get confirmation
+    if !skip_confirmation {
+        tracing::info!("Analyzing database sizes...");
+        let size_estimates = migration::estimate_database_sizes(&source_client, &databases).await?;
+
+        if !confirm_migration(&size_estimates)? {
+            bail!("Migration cancelled by user");
+        }
+    }
 
     // Step 4: Migrate each database
     tracing::info!("Step 4/4: Migrating databases...");
@@ -174,6 +198,65 @@ async fn create_database_if_not_exists(
     }
 }
 
+/// Display database size estimates and prompt for confirmation
+///
+/// Shows a table with database names, sizes, and estimated migration times.
+/// Prompts the user to proceed with the migration.
+///
+/// # Arguments
+///
+/// * `sizes` - Vector of database size estimates
+///
+/// # Returns
+///
+/// Returns `true` if user confirms (enters 'y'), `false` otherwise.
+///
+/// # Errors
+///
+/// Returns an error if stdin/stdout operations fail.
+fn confirm_migration(sizes: &[migration::DatabaseSizeInfo]) -> Result<bool> {
+    use std::time::Duration;
+
+    // Calculate totals
+    let total_bytes: i64 = sizes.iter().map(|s| s.size_bytes).sum();
+    let total_duration: Duration = sizes.iter().map(|s| s.estimated_duration).sum();
+
+    // Print table header
+    println!();
+    println!("{:<20} {:<12} {:<15}", "Database", "Size", "Est. Time");
+    println!("{}", "─".repeat(50));
+
+    // Print each database
+    for size in sizes {
+        println!(
+            "{:<20} {:<12} {:<15}",
+            size.name,
+            size.size_human,
+            migration::format_duration(size.estimated_duration)
+        );
+    }
+
+    // Print totals
+    println!("{}", "─".repeat(50));
+    println!(
+        "Total: {} (estimated {})",
+        migration::format_bytes(total_bytes),
+        migration::format_duration(total_duration)
+    );
+    println!();
+
+    // Prompt for confirmation
+    print!("Proceed with migration? [y/N]: ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .context("Failed to read user input")?;
+
+    Ok(input.trim().to_lowercase() == "y")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,7 +267,8 @@ mod tests {
         let source = std::env::var("TEST_SOURCE_URL").unwrap();
         let target = std::env::var("TEST_TARGET_URL").unwrap();
 
-        let result = init(&source, &target).await;
+        // Skip confirmation for automated tests
+        let result = init(&source, &target, true).await;
         assert!(result.is_ok());
     }
 

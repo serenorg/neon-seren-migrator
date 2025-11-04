@@ -27,6 +27,9 @@ enum Commands {
         source: String,
         #[arg(long)]
         target: String,
+        /// Skip confirmation prompt
+        #[arg(short = 'y', long)]
+        yes: bool,
     },
     /// Set up logical replication from source to target
     Sync {
@@ -60,7 +63,11 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Validate { source, target } => commands::validate(&source, &target).await,
-        Commands::Init { source, target } => commands::init(&source, &target).await,
+        Commands::Init {
+            source,
+            target,
+            yes,
+        } => commands::init(&source, &target, yes).await,
         Commands::Sync { source, target } => {
             commands::sync(&source, &target, None, None, None).await
         }

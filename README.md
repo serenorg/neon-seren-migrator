@@ -14,6 +14,7 @@ This tool enables safe, zero-downtime migration of PostgreSQL databases from Neo
 ## Features
 
 - **Zero Downtime**: Uses logical replication to keep databases in sync
+- **Size Estimation**: Analyze database sizes and view estimated migration times before starting
 - **High Performance**: Parallel dump/restore with automatic CPU core detection
 - **Optimized Compression**: Maximum compression (level 9) for faster transfers
 - **Large Object Support**: Handles BLOBs and large binary objects efficiently
@@ -80,12 +81,36 @@ Check that both databases meet migration requirements:
 
 ### 2. Initialize Migration
 
-Copy initial schema and data:
+Copy initial schema and data. The tool will first analyze database sizes and show estimated migration times:
 
 ```bash
 ./neon-seren-migrator init \
   --source "postgresql://user:pass@neon-host:5432/db" \
   --target "postgresql://user:pass@seren-host:5432/db"
+```
+
+Example output:
+```
+Analyzing database sizes...
+
+Database             Size         Est. Time
+──────────────────────────────────────────────────
+myapp               15.0 GB      ~45.0 minutes
+analytics           250.0 GB     ~12.5 hours
+staging             2.0 GB       ~6.0 minutes
+──────────────────────────────────────────────────
+Total: 267.0 GB (estimated ~13.3 hours)
+
+Proceed with migration? [y/N]:
+```
+
+For automated scripts, skip the confirmation prompt with `--yes` or `-y`:
+
+```bash
+./neon-seren-migrator init \
+  --source "postgresql://user:pass@neon-host:5432/db" \
+  --target "postgresql://user:pass@seren-host:5432/db" \
+  --yes
 ```
 
 ### 3. Set Up Replication
