@@ -7,7 +7,12 @@ use anyhow::{bail, Context, Result};
 pub async fn validate(source_url: &str, target_url: &str) -> Result<()> {
     tracing::info!("Starting validation...");
 
-    // Step 0: Validate connection strings
+    // Step 0a: Check for required tools
+    tracing::info!("Checking for required PostgreSQL client tools...");
+    utils::check_required_tools().context("Required tools check failed")?;
+    tracing::info!("✓ Required tools found (pg_dump, pg_dumpall, psql)");
+
+    // Step 0b: Validate connection strings
     tracing::info!("Validating connection strings...");
     utils::validate_connection_string(source_url).context("Invalid source connection string")?;
     utils::validate_connection_string(target_url).context("Invalid target connection string")?;

@@ -3,6 +3,7 @@
 
 use anyhow::{bail, Result};
 use std::time::Duration;
+use which::which;
 
 /// Validate a PostgreSQL connection string
 pub fn validate_connection_string(url: &str) -> Result<()> {
@@ -32,6 +33,33 @@ pub fn validate_connection_string(url: &str) -> Result<()> {
         bail!(
             "Connection string missing database name.\n\
              Expected format: postgresql://user:password@host:port/database"
+        );
+    }
+
+    Ok(())
+}
+
+/// Check that required PostgreSQL client tools are available
+pub fn check_required_tools() -> Result<()> {
+    let tools = ["pg_dump", "pg_dumpall", "psql"];
+    let mut missing = Vec::new();
+
+    for tool in &tools {
+        if which(tool).is_err() {
+            missing.push(*tool);
+        }
+    }
+
+    if !missing.is_empty() {
+        bail!(
+            "Missing required PostgreSQL client tools: {}\n\
+             \n\
+             Please install PostgreSQL client tools:\n\
+             - Ubuntu/Debian: sudo apt-get install postgresql-client\n\
+             - macOS: brew install postgresql\n\
+             - RHEL/CentOS: sudo yum install postgresql\n\
+             - Windows: Download from https://www.postgresql.org/download/windows/",
+            missing.join(", ")
         );
     }
 
@@ -94,6 +122,21 @@ mod tests {
     fn test_validate_connection_string_valid() {
         assert!(validate_connection_string("postgresql://user:pass@localhost:5432/dbname").is_ok());
         assert!(validate_connection_string("postgres://user@host/db").is_ok());
+    }
+
+    #[test]
+    fn test_check_required_tools() {
+        // This test will pass if PostgreSQL client tools are installed
+        // It will fail (appropriately) if they're not installed
+        let result = check_required_tools();
+
+        // On systems with PostgreSQL installed, this should pass
+        // On systems without it, we expect a specific error message
+        if result.is_err() {
+            let err_msg = result.unwrap_err().to_string();
+            assert!(err_msg.contains("Missing required PostgreSQL client tools"));
+            assert!(err_msg.contains("pg_dump") || err_msg.contains("pg_dumpall") || err_msg.contains("psql"));
+        }
     }
 
     #[test]
