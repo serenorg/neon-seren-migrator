@@ -4,6 +4,8 @@
 use crate::migration::{compare_tables, list_tables, ChecksumResult};
 use crate::postgres::connect;
 use anyhow::{Context, Result};
+use futures::stream::{self, StreamExt};
+use indicatif::{ProgressBar, ProgressStyle};
 
 /// Verify data integrity between source and target databases
 ///
@@ -40,52 +42,100 @@ pub async fn verify(source_url: &str, target_url: &str) -> Result<()> {
     }
 
     tracing::info!("Found {} tables to verify", tables.len());
+    tracing::info!("Using parallel verification (concurrency: 4)");
     tracing::info!("");
 
-    // Compare each table
+    // Create progress bar
+    let progress = ProgressBar::new(tables.len() as u64);
+    progress.set_style(
+        ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}")
+            .unwrap()
+            .progress_chars("##-"),
+    );
+
+    // Create additional connections for parallel processing
+    // We'll use 4 concurrent workers (2 for source, 2 for target)
+    let source_client2 = connect(source_url)
+        .await
+        .context("Failed to create additional source connection")?;
+    let target_client2 = connect(target_url)
+        .await
+        .context("Failed to create additional target connection")?;
+
+    // Store clients in a vector for round-robin access
+    let source_clients = vec![source_client, source_client2];
+    let target_clients = vec![target_client, target_client2];
+
+    // Process tables in parallel with limited concurrency
     let mut results: Vec<ChecksumResult> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
+
+    let verification_results: Vec<_> = stream::iter(tables.iter().enumerate())
+        .map(|(idx, table)| {
+            let schema = table.schema.clone();
+            let name = table.name.clone();
+            let source_client = &source_clients[idx % source_clients.len()];
+            let target_client = &target_clients[idx % target_clients.len()];
+            let pb = progress.clone();
+
+            async move {
+                let result = compare_tables(source_client, target_client, &schema, &name).await;
+                pb.inc(1);
+                pb.set_message(format!("Verified {}.{}", schema, name));
+                (schema, name, result)
+            }
+        })
+        .buffer_unordered(4) // Process up to 4 tables concurrently
+        .collect()
+        .await;
+
+    progress.finish_with_message("Verification complete");
+    tracing::info!("");
+
+    // Process results
     let mut mismatches = 0;
     let mut matches = 0;
 
-    for (i, table) in tables.iter().enumerate() {
-        tracing::info!(
-            "[{}/{}] Verifying {}.{}...",
-            i + 1,
-            tables.len(),
-            table.schema,
-            table.name
-        );
-
-        match compare_tables(&source_client, &target_client, &table.schema, &table.name).await {
-            Ok(result) => {
-                if result.is_valid() {
+    for (schema, name, result) in verification_results {
+        match result {
+            Ok(checksum_result) => {
+                if checksum_result.is_valid() {
                     tracing::info!(
-                        "  ✓ Match ({} rows, checksum: {})",
-                        result.source_row_count,
-                        &result.source_checksum[..8]
+                        "  ✓ {}.{}: Match ({} rows, checksum: {})",
+                        schema,
+                        name,
+                        checksum_result.source_row_count,
+                        &checksum_result.source_checksum[..8]
                     );
                     matches += 1;
-                } else if result.matches {
+                } else if checksum_result.matches {
                     tracing::warn!(
-                        "  ⚠ Checksum matches but row count differs: source={}, target={}",
-                        result.source_row_count,
-                        result.target_row_count
+                        "  ⚠ {}.{}: Checksum matches but row count differs: source={}, target={}",
+                        schema,
+                        name,
+                        checksum_result.source_row_count,
+                        checksum_result.target_row_count
                     );
                     mismatches += 1;
                 } else {
                     tracing::error!(
-                        "  ✗ MISMATCH: source={} ({}), target={} ({})",
-                        &result.source_checksum[..8],
-                        result.source_row_count,
-                        &result.target_checksum[..8],
-                        result.target_row_count
+                        "  ✗ {}.{}: MISMATCH: source={} ({}), target={} ({})",
+                        schema,
+                        name,
+                        &checksum_result.source_checksum[..8],
+                        checksum_result.source_row_count,
+                        &checksum_result.target_checksum[..8],
+                        checksum_result.target_row_count
                     );
                     mismatches += 1;
                 }
-                results.push(result);
+                results.push(checksum_result);
             }
             Err(e) => {
-                tracing::error!("  ✗ ERROR: {}", e);
+                let error_msg = format!("{}.{}: {}", schema, name, e);
+                tracing::error!("  ✗ ERROR: {}", error_msg);
+                errors.push(error_msg);
                 mismatches += 1;
             }
         }
