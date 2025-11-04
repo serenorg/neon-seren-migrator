@@ -1,7 +1,6 @@
 # neon-seren-migrator
 
 [![CI](https://github.com/serenorg/neon-seren-migrator/actions/workflows/ci.yml/badge.svg)](https://github.com/serenorg/neon-seren-migrator/actions/workflows/ci.yml)
-[![Security Audit](https://github.com/serenorg/neon-seren-migrator/actions/workflows/ci.yml/badge.svg?event=push)](https://github.com/serenorg/neon-seren-migrator/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue.svg)](https://www.rust-lang.org)
 [![Latest Release](https://img.shields.io/github/v/release/serenorg/neon-seren-migrator)](https://github.com/serenorg/neon-seren-migrator/releases)
