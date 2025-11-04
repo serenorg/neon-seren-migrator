@@ -1,0 +1,17 @@
+[package]
+name = "seren-neon-migrator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.35", features = ["full"] }
+tokio-postgres = "0.7"
+clap = { version = "4.4", features = ["derive"] }
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+postgres-native-tls = "0.5"
+native-tls = "0.2"
+
+[dev-dependencies]
+tempfile = "3.8"
