@@ -87,7 +87,7 @@ pub async fn dump_schema(source_url: &str, database: &str, output_path: &str) ->
 /// Dump data for a specific database
 pub async fn dump_data(source_url: &str, database: &str, output_path: &str) -> Result<()> {
     tracing::info!(
-        "Dumping data for database '{}' to {}",
+        "Dumping data for database '{}' to {} (with compression)",
         database,
         output_path
     );
@@ -95,6 +95,7 @@ pub async fn dump_data(source_url: &str, database: &str, output_path: &str) -> R
     let output = Command::new("pg_dump")
         .arg("--data-only")
         .arg("--no-owner")
+        .arg("--compress=6") // Use gzip compression level 6 for faster I/O
         .arg(format!("--dbname={}", source_url))
         .arg(format!("--file={}", output_path))
         .output()
