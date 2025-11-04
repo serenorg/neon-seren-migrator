@@ -2,12 +2,5 @@
 # Ignore specific advisories (use sparingly, document why)
 ignore = []
 
-# Warn on unmaintained crates
-unmaintained = "warn"
-
-# Warn on yanked crates
-yanked = "warn"
-
-[output]
-# Show complete dependency tree for advisories
-show-tree = true
+# Warn about unmaintained and yanked crates
+informational_warnings = ["unmaintained", "yanked"]
