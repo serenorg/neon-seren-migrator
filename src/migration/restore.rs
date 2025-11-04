@@ -68,17 +68,37 @@ pub async fn restore_schema(target_url: &str, input_path: &str) -> Result<()> {
     Ok(())
 }
 
-/// Restore data using psql
+/// Restore data using pg_restore with parallel jobs
+///
+/// Uses PostgreSQL directory format restore with:
+/// - Parallel restore for faster performance
+/// - Automatic decompression of compressed dump files
+/// - Optimized for directory format dumps created by dump_data()
+///
+/// The number of parallel jobs is automatically determined based on available CPU cores.
 pub async fn restore_data(target_url: &str, input_path: &str) -> Result<()> {
-    tracing::info!("Restoring data from {}", input_path);
+    // Determine optimal number of parallel jobs (number of CPUs, capped at 8)
+    let num_cpus = std::thread::available_parallelism()
+        .map(|n| n.get().min(8))
+        .unwrap_or(4);
 
-    let output = Command::new("psql")
+    tracing::info!(
+        "Restoring data from {} (parallel={}, format=directory)",
+        input_path,
+        num_cpus
+    );
+
+    let output = Command::new("pg_restore")
+        .arg("--data-only")
+        .arg("--no-owner")
+        .arg(format!("--jobs={}", num_cpus)) // Parallel restore jobs
         .arg(format!("--dbname={}", target_url))
-        .arg(format!("--file={}", input_path))
-        .arg("--quiet")
+        .arg("--format=directory") // Directory format
+        .arg("--verbose") // Show progress
+        .arg(input_path)
         .output()
         .context(
-            "Failed to execute psql. Is PostgreSQL client installed?\n\
+            "Failed to execute pg_restore. Is PostgreSQL client installed?\n\
              Install with:\n\
              - Ubuntu/Debian: sudo apt-get install postgresql-client\n\
              - macOS: brew install postgresql\n\
@@ -96,12 +116,16 @@ pub async fn restore_data(target_url: &str, input_path: &str) -> Result<()> {
              - Unique constraint violations (data already exists)\n\
              - User lacks INSERT privileges on target tables\n\
              - Disk space issues on target\n\
-             - Data type mismatches",
+             - Data type mismatches\n\
+             - Input directory is not a valid pg_dump directory format",
             stderr
         );
     }
 
-    tracing::info!("✓ Data restored successfully");
+    tracing::info!(
+        "✓ Data restored successfully using {} parallel jobs",
+        num_cpus
+    );
     Ok(())
 }
 

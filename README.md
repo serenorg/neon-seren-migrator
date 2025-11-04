@@ -14,6 +14,9 @@ This tool enables safe, zero-downtime migration of PostgreSQL databases from Neo
 ## Features
 
 - **Zero Downtime**: Uses logical replication to keep databases in sync
+- **High Performance**: Parallel dump/restore with automatic CPU core detection
+- **Optimized Compression**: Maximum compression (level 9) for faster transfers
+- **Large Object Support**: Handles BLOBs and large binary objects efficiently
 - **Complete Migration**: Migrates schema, data, roles, and permissions
 - **Data Validation**: Checksum-based verification of data integrity
 - **Real-time Monitoring**: Track replication lag and status
@@ -185,6 +188,30 @@ export TEST_TARGET_URL="postgresql://postgres:postgres@localhost:5433/postgres"
 - Superuser or database owner privileges
 - Ability to create subscriptions
 - Network connectivity to source database
+
+## Performance Optimizations
+
+The tool uses several optimizations for fast, efficient database migrations:
+
+### Parallel Operations
+
+- **Auto-detected parallelism**: Automatically uses up to 8 parallel workers based on CPU cores
+- **Parallel dump**: pg_dump with `--jobs` flag for concurrent table exports
+- **Parallel restore**: pg_restore with `--jobs` flag for concurrent table imports
+- **Directory format**: Uses PostgreSQL directory format to enable parallel operations
+
+### Compression
+
+- **Maximum compression**: Level 9 compression for smaller dump sizes
+- **Faster transfers**: Reduced network bandwidth and storage requirements
+- **Per-file compression**: Each table compressed independently for parallel efficiency
+
+### Large Objects
+
+- **Blob support**: Includes large objects (BLOBs) with `--blobs` flag
+- **Binary data**: Handles images, documents, and other binary data efficiently
+
+These optimizations can significantly reduce migration time, especially for large databases with many tables.
 
 ## Architecture
 

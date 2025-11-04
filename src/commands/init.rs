@@ -106,13 +106,13 @@ pub async fn init(source_url: &str, target_url: &str) -> Result<()> {
         tracing::info!("  Restoring schema for '{}'...", db_info.name);
         migration::restore_schema(&target_db_url, schema_file.to_str().unwrap()).await?;
 
-        // Dump and restore data
+        // Dump and restore data (using directory format for parallel operations)
         tracing::info!("  Dumping data for '{}'...", db_info.name);
-        let data_file = temp_path.join(format!("{}_data.sql", db_info.name));
-        migration::dump_data(&source_db_url, &db_info.name, data_file.to_str().unwrap()).await?;
+        let data_dir = temp_path.join(format!("{}_data.dump", db_info.name));
+        migration::dump_data(&source_db_url, &db_info.name, data_dir.to_str().unwrap()).await?;
 
         tracing::info!("  Restoring data for '{}'...", db_info.name);
-        migration::restore_data(&target_db_url, data_file.to_str().unwrap()).await?;
+        migration::restore_data(&target_db_url, data_dir.to_str().unwrap()).await?;
 
         tracing::info!("✓ Database '{}' migrated successfully", db_info.name);
     }

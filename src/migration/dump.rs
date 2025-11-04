@@ -84,18 +84,35 @@ pub async fn dump_schema(source_url: &str, database: &str, output_path: &str) ->
     Ok(())
 }
 
-/// Dump data for a specific database
+/// Dump data for a specific database using optimized directory format
+///
+/// Uses PostgreSQL directory format dump with:
+/// - Parallel dumps for faster performance
+/// - Maximum compression (level 9)
+/// - Large object (blob) support
+/// - Directory output for efficient parallel restore
+///
+/// The number of parallel jobs is automatically determined based on available CPU cores.
 pub async fn dump_data(source_url: &str, database: &str, output_path: &str) -> Result<()> {
+    // Determine optimal number of parallel jobs (number of CPUs, capped at 8)
+    let num_cpus = std::thread::available_parallelism()
+        .map(|n| n.get().min(8))
+        .unwrap_or(4);
+
     tracing::info!(
-        "Dumping data for database '{}' to {} (with compression)",
+        "Dumping data for database '{}' to {} (parallel={}, compression=9, format=directory)",
         database,
-        output_path
+        output_path,
+        num_cpus
     );
 
     let output = Command::new("pg_dump")
         .arg("--data-only")
         .arg("--no-owner")
-        .arg("--compress=6") // Use gzip compression level 6 for faster I/O
+        .arg("--format=directory") // Directory format enables parallel operations
+        .arg("--blobs") // Include large objects (blobs)
+        .arg("--compress=9") // Maximum compression for smaller dump size
+        .arg(format!("--jobs={}", num_cpus)) // Parallel dump jobs
         .arg(format!("--dbname={}", source_url))
         .arg(format!("--file={}", output_path))
         .output()
@@ -118,13 +135,17 @@ pub async fn dump_data(source_url: &str, database: &str, output_path: &str) -> R
              - Connection authentication failed\n\
              - User lacks privileges to read table data\n\
              - Network connectivity issues\n\
-             - Insufficient disk space for dump file",
+             - Insufficient disk space for dump directory\n\
+             - Output directory already exists (pg_dump requires non-existent path)",
             database,
             stderr
         );
     }
 
-    tracing::info!("✓ Data dumped successfully");
+    tracing::info!(
+        "✓ Data dumped successfully using {} parallel jobs",
+        num_cpus
+    );
     Ok(())
 }
 
