@@ -9,32 +9,12 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+permissions:
+  contents: write
+
 jobs:
-  create-release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-      version: ${{ steps.get_version.outputs.version }}
-    steps:
-      - name: Get version from tag
-        id: get_version
-        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ steps.get_version.outputs.version }}
-          draft: true
-          prerelease: false
-
   build-release:
-    name: Build Release
-    needs: create-release
+    name: Build Release Binaries
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -71,12 +51,76 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: strip target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
 
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Rename binary
+        run: |
+          cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ${{ matrix.asset_name }}
+          chmod +x ${{ matrix.asset_name }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
-          asset_name: ${{ matrix.asset_name }}
-          asset_content_type: application/octet-stream
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+          if-no-files-found: error
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: List artifacts
+        run: |
+          ls -lR release-artifacts/
+          find release-artifacts/ -type f -exec chmod +x {} \;
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+
+          # Generate release notes
+          cat > release-notes.md << 'EOF'
+          ## What's Changed
+
+          - Fix: CLI commands now show output without requiring RUST_LOG environment variable
+          - Default to INFO level logging for better user experience
+          - Automated release workflow for future versions
+
+          ### Installation
+
+          Download the appropriate binary for your platform:
+
+          - **Linux (x64)**: `neon-seren-replicator-linux-x64-binary`
+          - **macOS (Intel)**: `neon-seren-replicator-macos-x64-binary`
+          - **macOS (Apple Silicon)**: `neon-seren-replicator-macos-arm64-binary`
+
+          Make the binary executable:
+
+          ```bash
+          chmod +x neon-seren-replicator-*-binary
+          ./neon-seren-replicator-*-binary --help
+          ```
+
+          ### Fixed Issues
+
+          - #33: CLI commands produce no output without RUST_LOG environment variable
+
+          **Full Changelog**: https://github.com/serenorg/neon-seren-replicator/compare/v0.2.0...${VERSION}
+          EOF
+
+          # Create release with all binaries
+          gh release create "${VERSION}" \
+            --title "Release ${VERSION}" \
+            --notes-file release-notes.md \
+            release-artifacts/neon-seren-replicator-linux-x64-binary/neon-seren-replicator-linux-x64-binary \
+            release-artifacts/neon-seren-replicator-macos-x64-binary/neon-seren-replicator-macos-x64-binary \
+            release-artifacts/neon-seren-replicator-macos-arm64-binary/neon-seren-replicator-macos-arm64-binary
