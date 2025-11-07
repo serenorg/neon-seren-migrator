@@ -43,11 +43,14 @@ use tempfile::TempDir;
 /// ```no_run
 /// # use anyhow::Result;
 /// # use postgres_seren_replicator::commands::init;
+/// # use postgres_seren_replicator::filters::ReplicationFilter;
 /// # async fn example() -> Result<()> {
 /// // With confirmation prompt
 /// init(
 ///     "postgresql://user:pass@neon.tech/sourcedb",
 ///     "postgresql://user:pass@seren.example.com/targetdb",
+///     false,
+///     ReplicationFilter::empty(),
 ///     false
 /// ).await?;
 ///
@@ -55,12 +58,20 @@ use tempfile::TempDir;
 /// init(
 ///     "postgresql://user:pass@neon.tech/sourcedb",
 ///     "postgresql://user:pass@seren.example.com/targetdb",
-///     true
+///     true,
+///     ReplicationFilter::empty(),
+///     false
 /// ).await?;
 /// # Ok(())
 /// # }
 /// ```
-pub async fn init(source_url: &str, target_url: &str, skip_confirmation: bool) -> Result<()> {
+pub async fn init(
+    source_url: &str,
+    target_url: &str,
+    skip_confirmation: bool,
+    _filter: crate::filters::ReplicationFilter,
+    _drop_existing: bool,
+) -> Result<()> {
     tracing::info!("Starting initial replication...");
 
     // Create temporary directory for dump files
@@ -268,7 +279,8 @@ mod tests {
         let target = std::env::var("TEST_TARGET_URL").unwrap();
 
         // Skip confirmation for automated tests
-        let result = init(&source, &target, true).await;
+        let filter = crate::filters::ReplicationFilter::empty();
+        let result = init(&source, &target, true, filter, false).await;
         assert!(result.is_ok());
     }
 

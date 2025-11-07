@@ -20,6 +20,21 @@ enum Commands {
         source: String,
         #[arg(long)]
         target: String,
+        /// Include only these databases (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        include_databases: Option<Vec<String>>,
+        /// Exclude these databases (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        exclude_databases: Option<Vec<String>>,
+        /// Include only these tables (format: database.table, comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        include_tables: Option<Vec<String>>,
+        /// Exclude these tables (format: database.table, comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        exclude_tables: Option<Vec<String>>,
+        /// Interactive mode for selecting databases/tables
+        #[arg(long)]
+        interactive: bool,
     },
     /// Initialize replication with snapshot copy of schema and data
     Init {
@@ -30,6 +45,24 @@ enum Commands {
         /// Skip confirmation prompt
         #[arg(short = 'y', long)]
         yes: bool,
+        /// Include only these databases (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        include_databases: Option<Vec<String>>,
+        /// Exclude these databases (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        exclude_databases: Option<Vec<String>>,
+        /// Include only these tables (format: database.table, comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        include_tables: Option<Vec<String>>,
+        /// Exclude these tables (format: database.table, comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        exclude_tables: Option<Vec<String>>,
+        /// Interactive mode for selecting databases/tables
+        #[arg(long)]
+        interactive: bool,
+        /// Drop existing databases on target before copying
+        #[arg(long)]
+        drop_existing: bool,
     },
     /// Set up continuous logical replication from source to target
     Sync {
@@ -37,6 +70,21 @@ enum Commands {
         source: String,
         #[arg(long)]
         target: String,
+        /// Include only these databases (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        include_databases: Option<Vec<String>>,
+        /// Exclude these databases (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        exclude_databases: Option<Vec<String>>,
+        /// Include only these tables (format: database.table, comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        include_tables: Option<Vec<String>>,
+        /// Exclude these tables (format: database.table, comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        exclude_tables: Option<Vec<String>>,
+        /// Interactive mode for selecting databases/tables
+        #[arg(long)]
+        interactive: bool,
     },
     /// Check replication status and lag in real-time
     Status {
@@ -44,6 +92,12 @@ enum Commands {
         source: String,
         #[arg(long)]
         target: String,
+        /// Include only these databases (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        include_databases: Option<Vec<String>>,
+        /// Exclude these databases (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        exclude_databases: Option<Vec<String>>,
     },
     /// Verify data integrity between source and target
     Verify {
@@ -51,6 +105,18 @@ enum Commands {
         source: String,
         #[arg(long)]
         target: String,
+        /// Include only these databases (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        include_databases: Option<Vec<String>>,
+        /// Exclude these databases (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        exclude_databases: Option<Vec<String>>,
+        /// Include only these tables (format: database.table, comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        include_tables: Option<Vec<String>>,
+        /// Exclude these tables (format: database.table, comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        exclude_tables: Option<Vec<String>>,
     },
 }
 
@@ -67,16 +133,97 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Validate { source, target } => commands::validate(&source, &target).await,
+        Commands::Validate {
+            source,
+            target,
+            include_databases,
+            exclude_databases,
+            include_tables,
+            exclude_tables,
+            interactive,
+        } => {
+            if interactive {
+                anyhow::bail!("Interactive mode not yet implemented");
+            }
+            let filter = postgres_seren_replicator::filters::ReplicationFilter::new(
+                include_databases,
+                exclude_databases,
+                include_tables,
+                exclude_tables,
+            )?;
+            commands::validate(&source, &target, filter).await
+        }
         Commands::Init {
             source,
             target,
             yes,
-        } => commands::init(&source, &target, yes).await,
-        Commands::Sync { source, target } => {
-            commands::sync(&source, &target, None, None, None).await
+            include_databases,
+            exclude_databases,
+            include_tables,
+            exclude_tables,
+            interactive,
+            drop_existing,
+        } => {
+            if interactive {
+                anyhow::bail!("Interactive mode not yet implemented");
+            }
+            let filter = postgres_seren_replicator::filters::ReplicationFilter::new(
+                include_databases,
+                exclude_databases,
+                include_tables,
+                exclude_tables,
+            )?;
+            commands::init(&source, &target, yes, filter, drop_existing).await
         }
-        Commands::Status { source, target } => commands::status(&source, &target, None).await,
-        Commands::Verify { source, target } => commands::verify(&source, &target).await,
+        Commands::Sync {
+            source,
+            target,
+            include_databases,
+            exclude_databases,
+            include_tables,
+            exclude_tables,
+            interactive,
+        } => {
+            if interactive {
+                anyhow::bail!("Interactive mode not yet implemented");
+            }
+            let filter = postgres_seren_replicator::filters::ReplicationFilter::new(
+                include_databases,
+                exclude_databases,
+                include_tables,
+                exclude_tables,
+            )?;
+            commands::sync(&source, &target, Some(filter), None, None, None).await
+        }
+        Commands::Status {
+            source,
+            target,
+            include_databases,
+            exclude_databases,
+        } => {
+            let filter = postgres_seren_replicator::filters::ReplicationFilter::new(
+                include_databases,
+                exclude_databases,
+                None,
+                None,
+            )?;
+            commands::status(&source, &target, Some(filter)).await
+        }
+        Commands::Verify {
+            source,
+            target,
+            include_databases,
+            exclude_databases,
+            include_tables,
+            exclude_tables,
+        } => {
+            let filter = postgres_seren_replicator::filters::ReplicationFilter::new(
+                include_databases,
+                exclude_databases,
+                include_tables,
+                exclude_tables,
+            )?;
+            commands::verify(&source, &target, Some(filter)).await
+        }
     }
 }
