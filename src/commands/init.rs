@@ -15,6 +15,7 @@ use tokio_postgres::Client;
 /// 4. Restores global objects to target
 /// 5. Discovers all user databases on source
 /// 6. Replicates each database (schema and data)
+/// 7. Optionally sets up continuous logical replication (if enable_sync is true)
 ///
 /// Uses temporary directory for dump files, which is automatically cleaned up.
 ///
@@ -23,6 +24,9 @@ use tokio_postgres::Client;
 /// * `source_url` - PostgreSQL connection string for source (Neon) database
 /// * `target_url` - PostgreSQL connection string for target (Seren) database
 /// * `skip_confirmation` - Skip the size estimation and confirmation prompt
+/// * `filter` - Database and table filtering rules
+/// * `drop_existing` - Drop existing databases on target before copying
+/// * `enable_sync` - Set up continuous logical replication after snapshot (default: true)
 ///
 /// # Returns
 ///
@@ -37,6 +41,7 @@ use tokio_postgres::Client;
 /// - Database discovery fails
 /// - Any database replication fails
 /// - User declines confirmation prompt
+/// - Logical replication setup fails (if enable_sync is true)
 ///
 /// # Examples
 ///
@@ -45,22 +50,24 @@ use tokio_postgres::Client;
 /// # use postgres_seren_replicator::commands::init;
 /// # use postgres_seren_replicator::filters::ReplicationFilter;
 /// # async fn example() -> Result<()> {
-/// // With confirmation prompt
+/// // With confirmation prompt and automatic sync (default)
 /// init(
 ///     "postgresql://user:pass@neon.tech/sourcedb",
 ///     "postgresql://user:pass@seren.example.com/targetdb",
 ///     false,
 ///     ReplicationFilter::empty(),
-///     false
+///     false,
+///     true  // Enable continuous replication
 /// ).await?;
 ///
-/// // Skip confirmation (automated scripts)
+/// // Snapshot only (no continuous replication)
 /// init(
 ///     "postgresql://user:pass@neon.tech/sourcedb",
 ///     "postgresql://user:pass@seren.example.com/targetdb",
 ///     true,
 ///     ReplicationFilter::empty(),
-///     false
+///     false,
+///     false  // Disable continuous replication
 /// ).await?;
 /// # Ok(())
 /// # }
@@ -71,6 +78,7 @@ pub async fn init(
     skip_confirmation: bool,
     filter: crate::filters::ReplicationFilter,
     drop_existing: bool,
+    enable_sync: bool,
 ) -> Result<()> {
     tracing::info!("Starting initial replication...");
 
@@ -238,6 +246,29 @@ pub async fn init(
     }
 
     tracing::info!("✅ Initial replication complete");
+
+    // Set up continuous logical replication if enabled
+    if enable_sync {
+        tracing::info!("");
+        tracing::info!("========================================");
+        tracing::info!("Step 5/5: Setting up continuous replication...");
+        tracing::info!("========================================");
+        tracing::info!("");
+
+        // Call sync command with the same filter
+        crate::commands::sync(source_url, target_url, Some(filter), None, None, None)
+            .await
+            .context("Failed to set up continuous replication")?;
+
+        tracing::info!("");
+        tracing::info!("✅ Complete! Snapshot and continuous replication are active");
+    } else {
+        tracing::info!("");
+        tracing::info!("ℹ Continuous replication was not set up (--no-sync flag)");
+        tracing::info!("  To enable it later, run:");
+        tracing::info!("    postgres-seren-replicator sync --source <url> --target <url>");
+    }
+
     Ok(())
 }
 
@@ -408,9 +439,9 @@ mod tests {
         let source = std::env::var("TEST_SOURCE_URL").unwrap();
         let target = std::env::var("TEST_TARGET_URL").unwrap();
 
-        // Skip confirmation for automated tests
+        // Skip confirmation for automated tests, disable sync to keep test simple
         let filter = crate::filters::ReplicationFilter::empty();
-        let result = init(&source, &target, true, filter, false).await;
+        let result = init(&source, &target, true, filter, false, false).await;
         assert!(result.is_ok());
     }
 

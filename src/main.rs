@@ -63,6 +63,9 @@ enum Commands {
         /// Drop existing databases on target before copying
         #[arg(long)]
         drop_existing: bool,
+        /// Disable automatic continuous replication setup after snapshot (default: false, meaning sync IS enabled)
+        #[arg(long)]
+        no_sync: bool,
     },
     /// Set up continuous logical replication from source to target
     Sync {
@@ -173,6 +176,7 @@ async fn main() -> anyhow::Result<()> {
             exclude_tables,
             interactive,
             drop_existing,
+            no_sync,
         } => {
             let filter = if interactive {
                 // Interactive mode - prompt user to select databases and tables
@@ -186,7 +190,8 @@ async fn main() -> anyhow::Result<()> {
                     exclude_tables,
                 )?
             };
-            commands::init(&source, &target, yes, filter, drop_existing).await
+            let enable_sync = !no_sync; // Invert the flag: by default sync is enabled
+            commands::init(&source, &target, yes, filter, drop_existing, enable_sync).await
         }
         Commands::Sync {
             source,

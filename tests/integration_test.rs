@@ -45,9 +45,9 @@ async fn test_init_command_integration() {
     println!("Testing init command...");
     println!("⚠ WARNING: This will copy all data from source to target!");
 
-    // Skip confirmation for automated tests
+    // Skip confirmation for automated tests, disable sync to keep test simple
     let filter = postgres_seren_replicator::filters::ReplicationFilter::empty();
-    let result = commands::init(&source_url, &target_url, true, filter, false).await;
+    let result = commands::init(&source_url, &target_url, true, filter, false, false).await;
 
     match &result {
         Ok(_) => {
@@ -282,8 +282,8 @@ async fn test_init_with_database_filter() {
     )
     .expect("Failed to create filter");
 
-    // Skip confirmation for automated tests
-    let result = commands::init(&source_url, &target_url, true, filter, false).await;
+    // Skip confirmation for automated tests, disable sync to keep test simple
+    let result = commands::init(&source_url, &target_url, true, filter, false, false).await;
 
     match &result {
         Ok(_) => {
@@ -316,8 +316,8 @@ async fn test_init_with_table_filter() {
     )
     .expect("Failed to create filter");
 
-    // Skip confirmation for automated tests
-    let result = commands::init(&source_url, &target_url, true, filter, false).await;
+    // Skip confirmation for automated tests, disable sync to keep test simple
+    let result = commands::init(&source_url, &target_url, true, filter, false, false).await;
 
     match &result {
         Ok(_) => {
