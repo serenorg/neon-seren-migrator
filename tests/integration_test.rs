@@ -18,7 +18,8 @@ async fn test_validate_command_integration() {
         get_test_urls().expect("TEST_SOURCE_URL and TEST_TARGET_URL must be set");
 
     println!("Testing validate command...");
-    let result = commands::validate(&source_url, &target_url).await;
+    let filter = postgres_seren_replicator::filters::ReplicationFilter::empty();
+    let result = commands::validate(&source_url, &target_url, filter).await;
 
     match &result {
         Ok(_) => {
@@ -45,7 +46,8 @@ async fn test_init_command_integration() {
     println!("⚠ WARNING: This will copy all data from source to target!");
 
     // Skip confirmation for automated tests
-    let result = commands::init(&source_url, &target_url, true).await;
+    let filter = postgres_seren_replicator::filters::ReplicationFilter::empty();
+    let result = commands::init(&source_url, &target_url, true, filter, false).await;
 
     match &result {
         Ok(_) => {
@@ -68,7 +70,8 @@ async fn test_sync_command_integration() {
     println!("Testing sync command...");
     println!("⚠ WARNING: This will set up logical replication!");
 
-    let result = commands::sync(&source_url, &target_url, None, None, Some(30)).await;
+    let filter = postgres_seren_replicator::filters::ReplicationFilter::empty();
+    let result = commands::sync(&source_url, &target_url, Some(filter), None, None, Some(30)).await;
 
     match &result {
         Ok(_) => {
@@ -120,7 +123,7 @@ async fn test_verify_command_integration() {
 
     println!("Testing verify command...");
 
-    let result = commands::verify(&source_url, &target_url).await;
+    let result = commands::verify(&source_url, &target_url, None).await;
 
     match &result {
         Ok(_) => {
@@ -149,7 +152,8 @@ async fn test_full_replication_workflow() {
 
     // Step 1: Validate
     println!("STEP 1: Validate databases...");
-    let validate_result = commands::validate(&source_url, &target_url).await;
+    let filter = postgres_seren_replicator::filters::ReplicationFilter::empty();
+    let validate_result = commands::validate(&source_url, &target_url, filter).await;
     match &validate_result {
         Ok(_) => println!("✓ Validation passed"),
         Err(e) => {
@@ -163,7 +167,8 @@ async fn test_full_replication_workflow() {
     // Uncomment this section to test the full workflow including data copy
     /*
     println!("STEP 2: Initialize replication...");
-    let init_result = commands::init(&source_url, &target_url, true).await;
+    let filter = postgres_seren_replicator::filters::ReplicationFilter::empty();
+    let init_result = commands::init(&source_url, &target_url, true, filter, false).await;
     match &init_result {
         Ok(_) => println!("✓ Init completed"),
         Err(e) => {
@@ -178,7 +183,8 @@ async fn test_full_replication_workflow() {
     // Step 3: Sync (commented out by default)
     /*
     println!("STEP 3: Set up logical replication...");
-    let sync_result = commands::sync(&source_url, &target_url, None, None, Some(60)).await;
+    let filter = postgres_seren_replicator::filters::ReplicationFilter::empty();
+    let sync_result = commands::sync(&source_url, &target_url, Some(filter), None, None, Some(60)).await;
     match &sync_result {
         Ok(_) => println!("✓ Sync completed"),
         Err(e) => {
@@ -207,7 +213,7 @@ async fn test_full_replication_workflow() {
 
     // Step 5: Verify (safe to run, read-only)
     println!("STEP 5: Verify data integrity...");
-    let verify_result = commands::verify(&source_url, &target_url).await;
+    let verify_result = commands::verify(&source_url, &target_url, None).await;
     match &verify_result {
         Ok(_) => println!("✓ Verification passed - all tables match!"),
         Err(e) => {
@@ -233,7 +239,8 @@ async fn test_error_handling_bad_source_url() {
     let bad_source = "postgresql://invalid:invalid@nonexistent:5432/invalid";
     let (_, target_url) = get_test_urls().expect("TEST_TARGET_URL must be set");
 
-    let result = commands::validate(bad_source, &target_url).await;
+    let filter = postgres_seren_replicator::filters::ReplicationFilter::empty();
+    let result = commands::validate(bad_source, &target_url, filter).await;
 
     // Should fail gracefully with connection error
     assert!(result.is_err(), "Should fail with bad source URL");
@@ -248,7 +255,8 @@ async fn test_error_handling_bad_target_url() {
     let (source_url, _) = get_test_urls().expect("TEST_SOURCE_URL must be set");
     let bad_target = "postgresql://invalid:invalid@nonexistent:5432/invalid";
 
-    let result = commands::validate(&source_url, bad_target).await;
+    let filter = postgres_seren_replicator::filters::ReplicationFilter::empty();
+    let result = commands::validate(&source_url, bad_target, filter).await;
 
     // Should fail gracefully with connection error
     assert!(result.is_err(), "Should fail with bad target URL");

@@ -54,6 +54,7 @@ use anyhow::{Context, Result};
 pub async fn sync(
     source_url: &str,
     target_url: &str,
+    _filter: Option<crate::filters::ReplicationFilter>,
     publication_name: Option<&str>,
     subscription_name: Option<&str>,
     sync_timeout_secs: Option<u64>,
@@ -135,6 +136,7 @@ mod tests {
         let result = sync(
             &source_url,
             &target_url,
+            None,
             Some(pub_name),
             Some(sub_name),
             Some(timeout),
@@ -173,7 +175,7 @@ mod tests {
         let source_url = std::env::var("TEST_SOURCE_URL").unwrap();
         let target_url = std::env::var("TEST_TARGET_URL").unwrap();
 
-        let result = sync(&source_url, &target_url, None, None, Some(60)).await;
+        let result = sync(&source_url, &target_url, None, None, None, Some(60)).await;
 
         match &result {
             Ok(_) => println!("✓ Sync with defaults completed successfully"),

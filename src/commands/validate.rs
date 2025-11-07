@@ -47,7 +47,11 @@ use anyhow::{bail, Context, Result};
 /// # Ok(())
 /// # }
 /// ```
-pub async fn validate(source_url: &str, target_url: &str) -> Result<()> {
+pub async fn validate(
+    source_url: &str,
+    target_url: &str,
+    _filter: crate::filters::ReplicationFilter,
+) -> Result<()> {
     tracing::info!("Starting validation...");
 
     // Step 0a: Check for required tools
@@ -258,13 +262,15 @@ mod tests {
         let source = std::env::var("TEST_SOURCE_URL").unwrap();
         let target = std::env::var("TEST_TARGET_URL").unwrap();
 
-        let result = validate(&source, &target).await;
+        let filter = crate::filters::ReplicationFilter::empty();
+        let result = validate(&source, &target, filter).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_validate_with_invalid_source_fails() {
-        let result = validate("invalid-url", "postgresql://localhost/db").await;
+        let filter = crate::filters::ReplicationFilter::empty();
+        let result = validate("invalid-url", "postgresql://localhost/db", filter).await;
         assert!(result.is_err());
     }
 }

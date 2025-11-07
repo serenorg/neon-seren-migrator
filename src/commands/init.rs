@@ -60,7 +60,13 @@ use tempfile::TempDir;
 /// # Ok(())
 /// # }
 /// ```
-pub async fn init(source_url: &str, target_url: &str, skip_confirmation: bool) -> Result<()> {
+pub async fn init(
+    source_url: &str,
+    target_url: &str,
+    skip_confirmation: bool,
+    _filter: crate::filters::ReplicationFilter,
+    _drop_existing: bool,
+) -> Result<()> {
     tracing::info!("Starting initial replication...");
 
     // Create temporary directory for dump files
@@ -268,7 +274,8 @@ mod tests {
         let target = std::env::var("TEST_TARGET_URL").unwrap();
 
         // Skip confirmation for automated tests
-        let result = init(&source, &target, true).await;
+        let filter = crate::filters::ReplicationFilter::empty();
+        let result = init(&source, &target, true, filter, false).await;
         assert!(result.is_ok());
     }
 

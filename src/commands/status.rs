@@ -68,9 +68,9 @@ fn format_duration(ms: i64) -> String {
 pub async fn status(
     source_url: &str,
     target_url: &str,
-    subscription_name: Option<&str>,
+    _filter: Option<crate::filters::ReplicationFilter>,
 ) -> Result<()> {
-    let sub_name = subscription_name.unwrap_or("seren_migration_sub");
+    let sub_name = "seren_migration_sub";
 
     tracing::info!("Checking replication status...");
     tracing::info!("Subscription: '{}'", sub_name);
@@ -226,7 +226,7 @@ mod tests {
         let source_url = std::env::var("TEST_SOURCE_URL").unwrap();
         let target_url = std::env::var("TEST_TARGET_URL").unwrap();
 
-        let result = status(&source_url, &target_url, Some("seren_migration_sub")).await;
+        let result = status(&source_url, &target_url, None).await;
 
         match &result {
             Ok(_) => println!("✓ Status command completed successfully"),

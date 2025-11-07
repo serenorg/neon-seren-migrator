@@ -47,7 +47,11 @@ use indicatif::{ProgressBar, ProgressStyle};
 /// # Ok(())
 /// # }
 /// ```
-pub async fn verify(source_url: &str, target_url: &str) -> Result<()> {
+pub async fn verify(
+    source_url: &str,
+    target_url: &str,
+    _filter: Option<crate::filters::ReplicationFilter>,
+) -> Result<()> {
     tracing::info!("Starting data integrity verification...");
     tracing::info!("");
 
@@ -217,7 +221,7 @@ mod tests {
         let source_url = std::env::var("TEST_SOURCE_URL").unwrap();
         let target_url = std::env::var("TEST_TARGET_URL").unwrap();
 
-        let result = verify(&source_url, &target_url).await;
+        let result = verify(&source_url, &target_url, None).await;
 
         match &result {
             Ok(_) => {
