@@ -89,36 +89,21 @@ jobs:
 
           # Generate release notes
           cat > release-notes.md << 'EOF'
-          ## 🚀 Major Release: v2.0.0
+          ## 🐛 Bug Fix Release: v2.0.1
 
-          This major release includes **advanced selective replication features** and **critical security fixes** for credential handling.
+          This patch release fixes connection URL query parameter handling.
 
-          ### 🎯 New Features: Selective Replication
+          ### 🔧 Bug Fixes
 
-          - **Schema-Aware Filtering**: Support for `schema.table` notation in all filter operations
-          - **Table-Level Replication Rules**: Control exactly which tables and data to replicate
-            - Schema-only tables (structure without data)
-            - Table filters with SQL predicates
-            - Time-based filters for time-series data
-          - **FK-Safe CASCADE**: Automatic detection and validation of foreign key relationships during filtered snapshots
-          - **Interactive Mode**: Terminal UI for selecting databases and tables to replicate
-          - **Configuration Files**: TOML-based configuration for complex replication scenarios
-          - **Checkpoint Resume**: Resume interrupted `init` operations from last completed database
+          **Fixed: Query Parameter Support (Issue #109)**
+          - Fixed pg_dumpall failing with connection URLs containing query parameters (e.g., `sslmode=require`, `channel_binding=require`)
+          - Query parameters are now properly parsed and passed to PostgreSQL tools as environment variables
+          - Enables support for PostgreSQL providers requiring SSL/TLS (Neon, AWS RDS, etc.)
+          - Fixed pg_dumpall to use `--database` instead of `--dbname` flag
 
-          ### 🔒 Security Fixes
+          ### Impact
 
-          **🔴 CRITICAL: Command Injection Vulnerability (Issue #75)**
-          - Fixed command injection vulnerability in pg_dump/pg_dumpall/psql/pg_restore invocations
-          - Credentials are now passed via secure `.pgpass` files instead of command-line arguments
-          - Passwords no longer visible in process listings (`ps` output)
-          - Automatic cleanup of temporary credential files using Rust's RAII pattern
-          - All PostgreSQL tool invocations now use separate connection parameters
-
-          **🟡 Password Exposure in Subscription Metadata (Issue #76)**
-          - Documented PostgreSQL subscription password exposure in system catalogs
-          - Added security warnings when creating subscriptions
-          - Provided comprehensive mitigation guide for using `.pgpass` on target servers
-          - Users can now avoid storing passwords in `pg_subscription` catalog
+          This fix resolves connection failures when using PostgreSQL connection URLs with SSL/TLS settings or other query parameters. Users connecting to Neon, AWS RDS with SSL, or any PostgreSQL instance requiring connection parameters can now use the tool without issues.
 
           ### Installation
 
@@ -137,14 +122,13 @@ jobs:
 
           ### Upgrade Recommendation
 
-          **All users should upgrade immediately** to protect against credential exposure vulnerabilities.
+          Users connecting to PostgreSQL instances with SSL/TLS requirements should upgrade to this version.
 
           ### Fixed Issues
 
-          - #75: Command injection vulnerability in PostgreSQL tool invocations
-          - #76: Password exposure in subscription connection strings
+          - #109: pg_dumpall fails with connection URLs containing query parameters
 
-          **Full Changelog**: https://github.com/serenorg/postgres-seren-replicator/compare/v1.2.0...${VERSION}
+          **Full Changelog**: https://github.com/serenorg/postgres-seren-replicator/compare/v2.0.0...${VERSION}
           EOF
 
           # Create release with all binaries
