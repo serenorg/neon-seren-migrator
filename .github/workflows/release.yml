@@ -89,11 +89,23 @@ jobs:
 
           # Generate release notes
           cat > release-notes.md << 'EOF'
-          ## 🔒 Security Release
+          ## 🚀 Major Release: v2.0.0
 
-          This release fixes **two critical security vulnerabilities** related to credential handling in PostgreSQL replication operations.
+          This major release includes **advanced selective replication features** and **critical security fixes** for credential handling.
 
-          ### Security Fixes
+          ### 🎯 New Features: Selective Replication
+
+          - **Schema-Aware Filtering**: Support for `schema.table` notation in all filter operations
+          - **Table-Level Replication Rules**: Control exactly which tables and data to replicate
+            - Schema-only tables (structure without data)
+            - Table filters with SQL predicates
+            - Time-based filters for time-series data
+          - **FK-Safe CASCADE**: Automatic detection and validation of foreign key relationships during filtered snapshots
+          - **Interactive Mode**: Terminal UI for selecting databases and tables to replicate
+          - **Configuration Files**: TOML-based configuration for complex replication scenarios
+          - **Checkpoint Resume**: Resume interrupted `init` operations from last completed database
+
+          ### 🔒 Security Fixes
 
           **🔴 CRITICAL: Command Injection Vulnerability (Issue #75)**
           - Fixed command injection vulnerability in pg_dump/pg_dumpall/psql/pg_restore invocations
