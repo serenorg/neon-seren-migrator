@@ -282,7 +282,9 @@ pub async fn select_databases_and_tables(
                         if apply_filter {
                             // Prompt for column name
                             let column: String = Input::with_theme(&ColorfulTheme::default())
-                                .with_prompt("  Timestamp column name")
+                                .with_prompt(
+                                    "  Column containing timestamps (e.g., created_at, updated_at)",
+                                )
                                 .default("created_at".to_string())
                                 .interact_text()
                                 .context("Failed to get column name")?;
@@ -290,7 +292,7 @@ pub async fn select_databases_and_tables(
                             // Prompt for time window
                             let window: String = Input::with_theme(&ColorfulTheme::default())
                                 .with_prompt(
-                                    "  Time window (e.g., '2 months', '90 days', '1 year')",
+                                    "  How far back to replicate data (e.g., '2 months', '90 days', '1 year')",
                                 )
                                 .default("2 months".to_string())
                                 .interact_text()
