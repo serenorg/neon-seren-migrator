@@ -89,46 +89,41 @@ jobs:
 
           # Generate release notes
           cat > release-notes.md << 'EOF'
-          ## ✨ Minor Release: v2.2.0
+          ## ✨ Minor Release: v2.3.0
 
-          This release adds intelligent `wal_level` validation to ensure logical replication prerequisites are met.
+          This release adds verbose progress output to all dump and restore operations, providing real-time feedback during long-running replication tasks.
 
           ### 🎯 New Features
 
-          **Intelligent wal_level Validation**
-          - Automatically checks target database `wal_level` setting before logical replication operations
-          - Three-tiered validation strategy for different commands:
-            - **validate**: Non-blocking informational warnings
-            - **init**: Graceful degradation - automatically disables sync and continues with snapshot-only mode
-            - **sync**: Fail-fast with clear error messages and actionable fix instructions
-          - Prevents confusing PostgreSQL warnings and subscription failures
+          **Verbose Progress Output for All Operations**
+          - Added `--verbose` flag to `pg_dumpall` for global object dump progress
+          - Added `--verbose` flag to `pg_dump` for schema and data dump progress
+          - Added `-v ON_ERROR_STOP=1` to `psql` commands for better error visibility
+          - `pg_restore` already had verbose output enabled
 
           ### Why This Matters
 
-          PostgreSQL logical replication requires `wal_level = logical` on the target database. Previously:
-          - Users saw cryptic warnings: "wal_level is insufficient to publish logical changes"
-          - Subscriptions would be created but fail silently
-          - Users had to debug PostgreSQL configuration issues manually
+          Previously, users experienced silent periods during dump and restore operations, making it unclear if the tool was working or stuck. This was especially problematic during:
+          - Large database dumps that could take minutes or hours
+          - Multi-table operations where progress wasn't visible
+          - Operations on macOS and other platforms where native progress wasn't showing
 
-          Now the tool:
-          - Validates `wal_level` automatically
-          - Provides clear guidance on how to fix the issue
-          - Gracefully falls back to snapshot-only mode when continuous sync isn't possible
-          - Prevents wasted time on operations that cannot succeed
+          Now users see real-time output like:
+          ```
+          pg_dump: reading schemas
+          pg_dump: reading user-defined tables
+          pg_dump: dumping contents of table "public"."users"
+          pg_dump: dumping contents of table "public"."orders"
+          pg_restore: processing data for table "public"."users"
+          pg_restore: processing data for table "public"."orders"
+          ```
 
-          ### Command-Specific Behavior
+          ### Benefits
 
-          **validate command**: Reports `wal_level` status with warnings if not 'logical', but doesn't fail
-
-          **init command**: Checks `wal_level` after snapshot completes. If not 'logical', automatically:
-          - Disables continuous sync setup
-          - Continues with snapshot-only replication
-          - Logs clear instructions for enabling sync later
-
-          **sync command**: Checks `wal_level` immediately before work begins. If not 'logical':
-          - Fails fast with detailed error message
-          - Provides two fix options: update postgresql.conf or use snapshot-only mode
-          - Prevents wasted effort on operations that cannot succeed
+          - **Transparency**: See exactly which tables are being processed in real-time
+          - **Confidence**: Know the tool is actively working, not stuck or frozen
+          - **Debugging**: Identify slow tables or operations immediately
+          - **Better UX**: No more wondering if the process has stalled during long operations
 
           ### Installation
 
@@ -147,9 +142,9 @@ jobs:
 
           ### Upgrade Recommendation
 
-          Recommended for all users, especially those working with managed PostgreSQL services where `wal_level` configuration may require special setup. This release significantly improves the user experience by providing clear guidance and graceful fallbacks.
+          Recommended for all users. This release significantly improves the user experience during replication operations by providing clear, real-time progress feedback.
 
-          **Full Changelog**: https://github.com/serenorg/postgres-seren-replicator/compare/v2.1.2...${VERSION}
+          **Full Changelog**: https://github.com/serenorg/postgres-seren-replicator/compare/v2.2.0...${VERSION}
           EOF
 
           # Create release with all binaries
