@@ -91,7 +91,8 @@ pub async fn dump_schema(
         .arg("--verbose"); // Show progress
 
     // Add table filtering if specified
-    if let Some(exclude_tables) = get_excluded_tables_for_db(filter, database) {
+    // Only exclude explicit exclude_tables from schema dump (NOT schema_only or predicate tables)
+    if let Some(exclude_tables) = get_schema_excluded_tables_for_db(filter, database) {
         if !exclude_tables.is_empty() {
             for table in exclude_tables {
                 cmd.arg("--exclude-table").arg(&table);
@@ -197,7 +198,8 @@ pub async fn dump_data(
         .arg("--verbose"); // Show progress
 
     // Add table filtering if specified
-    if let Some(exclude_tables) = get_excluded_tables_for_db(filter, database) {
+    // Exclude explicit excludes, schema_only tables, and predicate tables from data dump
+    if let Some(exclude_tables) = get_data_excluded_tables_for_db(filter, database) {
         if !exclude_tables.is_empty() {
             for table in exclude_tables {
                 cmd.arg("--exclude-table-data").arg(&table);
@@ -265,9 +267,43 @@ pub async fn dump_data(
     Ok(())
 }
 
-/// Extract table names for a specific database from exclude_tables filter
+/// Extract table names to exclude from SCHEMA dumps (--exclude-table flag)
+/// Only excludes explicit exclude_tables - NOT schema_only or predicate tables
+/// (those need their schema created, just not bulk data copied)
 /// Returns schema-qualified names in format: "schema"."table"
-fn get_excluded_tables_for_db(filter: &ReplicationFilter, db_name: &str) -> Option<Vec<String>> {
+fn get_schema_excluded_tables_for_db(
+    filter: &ReplicationFilter,
+    db_name: &str,
+) -> Option<Vec<String>> {
+    let mut tables = BTreeSet::new();
+
+    // Handle explicit exclude_tables (format: "database.table")
+    // These tables are completely excluded (no schema, no data)
+    if let Some(explicit) = filter.exclude_tables() {
+        for full_name in explicit {
+            let parts: Vec<&str> = full_name.split('.').collect();
+            if parts.len() == 2 && parts[0] == db_name {
+                // Format as "public"."table" for consistency
+                tables.insert(format!("\"public\".\"{}\"", parts[1]));
+            }
+        }
+    }
+
+    if tables.is_empty() {
+        None
+    } else {
+        Some(tables.into_iter().collect())
+    }
+}
+
+/// Extract table names to exclude from DATA dumps (--exclude-table-data flag)
+/// Excludes explicit excludes, schema_only tables, and predicate tables
+/// (predicate tables will be copied separately with filtering)
+/// Returns schema-qualified names in format: "schema"."table"
+fn get_data_excluded_tables_for_db(
+    filter: &ReplicationFilter,
+    db_name: &str,
+) -> Option<Vec<String>> {
     let mut tables = BTreeSet::new();
 
     // Handle explicit exclude_tables (format: "database.table")
@@ -357,7 +393,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_excluded_tables_for_db() {
+    fn test_get_schema_excluded_tables_for_db() {
         let filter = crate::filters::ReplicationFilter::new(
             None,
             None,
@@ -370,17 +406,47 @@ mod tests {
         )
         .unwrap();
 
-        let tables = get_excluded_tables_for_db(&filter, "db1").unwrap();
+        // Schema exclusion only includes explicit exclude_tables
+        let tables = get_schema_excluded_tables_for_db(&filter, "db1").unwrap();
         // Should return schema-qualified names
         assert_eq!(
             tables,
             vec!["\"public\".\"table1\"", "\"public\".\"table2\""]
         );
 
-        let tables = get_excluded_tables_for_db(&filter, "db2").unwrap();
+        let tables = get_schema_excluded_tables_for_db(&filter, "db2").unwrap();
         assert_eq!(tables, vec!["\"public\".\"table3\""]);
 
-        let tables = get_excluded_tables_for_db(&filter, "db3");
+        let tables = get_schema_excluded_tables_for_db(&filter, "db3");
+        assert!(tables.is_none() || tables.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_get_data_excluded_tables_for_db() {
+        let filter = crate::filters::ReplicationFilter::new(
+            None,
+            None,
+            None,
+            Some(vec![
+                "db1.table1".to_string(),
+                "db1.table2".to_string(),
+                "db2.table3".to_string(),
+            ]),
+        )
+        .unwrap();
+
+        // Data exclusion includes explicit exclude_tables, schema_only, and predicate tables
+        let tables = get_data_excluded_tables_for_db(&filter, "db1").unwrap();
+        // Should return schema-qualified names
+        assert_eq!(
+            tables,
+            vec!["\"public\".\"table1\"", "\"public\".\"table2\""]
+        );
+
+        let tables = get_data_excluded_tables_for_db(&filter, "db2").unwrap();
+        assert_eq!(tables, vec!["\"public\".\"table3\""]);
+
+        let tables = get_data_excluded_tables_for_db(&filter, "db3");
         assert!(tables.is_none() || tables.unwrap().is_empty());
     }
 
@@ -413,9 +479,16 @@ mod tests {
     }
 
     #[test]
-    fn test_get_excluded_tables_for_db_with_empty_filter() {
+    fn test_get_schema_excluded_tables_for_db_with_empty_filter() {
         let filter = crate::filters::ReplicationFilter::empty();
-        let tables = get_excluded_tables_for_db(&filter, "db1");
+        let tables = get_schema_excluded_tables_for_db(&filter, "db1");
+        assert!(tables.is_none());
+    }
+
+    #[test]
+    fn test_get_data_excluded_tables_for_db_with_empty_filter() {
+        let filter = crate::filters::ReplicationFilter::empty();
+        let tables = get_data_excluded_tables_for_db(&filter, "db1");
         assert!(tables.is_none());
     }
 
