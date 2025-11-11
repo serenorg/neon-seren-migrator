@@ -89,24 +89,16 @@ jobs:
 
           # Generate release notes
           cat > release-notes.md << 'EOF'
-          ## 🐛 Patch Release: v2.3.1
+          ## 🔧 Patch Release: v2.3.2
 
-          This patch release fixes a critical bug in filtered table replication that caused TRUNCATE operations to fail with double-quoted table identifiers.
+          This patch release adds the `--version` flag to check the binary version from the command line.
 
-          ### 🔧 Bug Fixes
+          ### ✨ New Features
 
-          **Fixed Double-Quoting Bug in Filtered Table Replication**
-          - Resolved error: `relation ""public"."table"" does not exist`
-          - Bug occurred when using table-level predicates or time-based filters during init
-          - TRUNCATE operations now correctly handle schema-qualified table names
-
-          ### Root Cause
-
-          The code was calling `quote_ident()` on table names that were already schema-qualified and quoted (e.g., `"public"."output"`). This resulted in double-quoting: `""public"."output""` which PostgreSQL cannot parse.
-
-          ### Impact
-
-          Users running `init` with filtered replication (via `--config` or interactive mode with table rules) would encounter failures during the snapshot phase when the tool attempted to truncate target tables before copying filtered data.
+          **Added --version Flag**
+          - Users can now check which version of the binary they're running
+          - Usage: `postgres-seren-replicator --version`
+          - Displays version from Cargo.toml (e.g., `postgres-seren-replicator 2.3.2`)
 
           ### Installation
 
@@ -120,14 +112,14 @@ jobs:
 
           ```bash
           chmod +x postgres-seren-replicator-*-binary
-          ./postgres-seren-replicator-*-binary --help
+          ./postgres-seren-replicator-*-binary --version
           ```
 
           ### Upgrade Recommendation
 
-          **Critical for users of filtered replication**. If you use table-level predicates, time-based filters, or schema-only tables in your replication configuration, upgrade immediately to avoid TRUNCATE failures.
+          Optional upgrade. This release adds convenience functionality for checking the binary version.
 
-          **Full Changelog**: https://github.com/serenorg/postgres-seren-replicator/compare/v2.3.0...${VERSION}
+          **Full Changelog**: https://github.com/serenorg/postgres-seren-replicator/compare/v2.3.1...${VERSION}
           EOF
 
           # Create release with all binaries
