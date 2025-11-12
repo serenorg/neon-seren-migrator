@@ -2,9 +2,10 @@
 // ABOUTME: Handles global objects, schema, and data export
 
 use crate::filters::ReplicationFilter;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use std::collections::BTreeSet;
 use std::process::{Command, Stdio};
+use std::time::Duration;
 
 /// Dump global objects (roles, tablespaces) using pg_dumpall
 pub async fn dump_globals(source_url: &str, output_path: &str) -> Result<()> {
@@ -16,50 +17,59 @@ pub async fn dump_globals(source_url: &str, output_path: &str) -> Result<()> {
     let pgpass = crate::utils::PgPassFile::new(&parts)
         .context("Failed to create .pgpass file for authentication")?;
 
-    let mut cmd = Command::new("pg_dumpall");
-    cmd.arg("--globals-only")
-        .arg("--no-role-passwords") // Don't dump passwords
-        .arg("--verbose") // Show progress
-        .arg("--host")
-        .arg(&parts.host)
-        .arg("--port")
-        .arg(parts.port.to_string())
-        .arg("--database")
-        .arg(&parts.database)
-        .arg(format!("--file={}", output_path))
-        .env("PGPASSFILE", pgpass.path())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
+    let env_vars = parts.to_pg_env_vars();
+    let output_path_owned = output_path.to_string();
 
-    // Add username if specified
-    if let Some(user) = &parts.user {
-        cmd.arg("--username").arg(user);
-    }
+    // Wrap subprocess execution with retry logic
+    crate::utils::retry_subprocess_with_backoff(
+        || {
+            let mut cmd = Command::new("pg_dumpall");
+            cmd.arg("--globals-only")
+                .arg("--no-role-passwords") // Don't dump passwords
+                .arg("--verbose") // Show progress
+                .arg("--host")
+                .arg(&parts.host)
+                .arg("--port")
+                .arg(parts.port.to_string())
+                .arg("--database")
+                .arg(&parts.database)
+                .arg(format!("--file={}", output_path_owned))
+                .env("PGPASSFILE", pgpass.path())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit());
 
-    // Apply query parameters as environment variables (SSL, channel_binding, etc.)
-    for (env_var, value) in parts.to_pg_env_vars() {
-        cmd.env(env_var, value);
-    }
+            // Add username if specified
+            if let Some(user) = &parts.user {
+                cmd.arg("--username").arg(user);
+            }
 
-    let status = cmd.status().context(
-        "Failed to execute pg_dumpall. Is PostgreSQL client installed?\n\
-         Install with:\n\
-         - Ubuntu/Debian: sudo apt-get install postgresql-client\n\
-         - macOS: brew install postgresql\n\
-         - RHEL/CentOS: sudo yum install postgresql",
+            // Apply query parameters as environment variables (SSL, channel_binding, etc.)
+            for (env_var, value) in &env_vars {
+                cmd.env(env_var, value);
+            }
+
+            cmd.status().context(
+                "Failed to execute pg_dumpall. Is PostgreSQL client installed?\n\
+                 Install with:\n\
+                 - Ubuntu/Debian: sudo apt-get install postgresql-client\n\
+                 - macOS: brew install postgresql\n\
+                 - RHEL/CentOS: sudo yum install postgresql",
+            )
+        },
+        3,                      // Max 3 retries
+        Duration::from_secs(1), // Start with 1 second delay
+        "pg_dumpall (dump globals)",
+    )
+    .context(
+        "pg_dumpall failed to dump global objects.\n\
+         \n\
+         Common causes:\n\
+         - Connection authentication failed\n\
+         - User lacks sufficient privileges (need SUPERUSER or pg_read_all_settings role)\n\
+         - Network connectivity issues\n\
+         - Invalid connection string\n\
+         - Connection timeout or network issues"
     )?;
-
-    if !status.success() {
-        bail!(
-            "pg_dumpall failed to dump global objects.\n\
-             \n\
-             Common causes:\n\
-             - Connection authentication failed\n\
-             - User lacks sufficient privileges (need SUPERUSER or pg_read_all_settings role)\n\
-             - Network connectivity issues\n\
-             - Invalid connection string"
-        );
-    }
 
     tracing::info!("✓ Global objects dumped successfully");
     Ok(())
@@ -84,72 +94,87 @@ pub async fn dump_schema(
     let pgpass = crate::utils::PgPassFile::new(&parts)
         .context("Failed to create .pgpass file for authentication")?;
 
-    let mut cmd = Command::new("pg_dump");
-    cmd.arg("--schema-only")
-        .arg("--no-owner") // Don't include ownership commands
-        .arg("--no-privileges") // We'll handle privileges separately
-        .arg("--verbose"); // Show progress
+    let env_vars = parts.to_pg_env_vars();
+    let output_path_owned = output_path.to_string();
 
-    // Add table filtering if specified
-    // Only exclude explicit exclude_tables from schema dump (NOT schema_only or predicate tables)
-    if let Some(exclude_tables) = get_schema_excluded_tables_for_db(filter, database) {
-        if !exclude_tables.is_empty() {
-            for table in exclude_tables {
-                cmd.arg("--exclude-table").arg(&table);
+    // Collect filter options
+    let exclude_tables = get_schema_excluded_tables_for_db(filter, database);
+    let include_tables = get_included_tables_for_db(filter, database);
+
+    // Wrap subprocess execution with retry logic
+    crate::utils::retry_subprocess_with_backoff(
+        || {
+            let mut cmd = Command::new("pg_dump");
+            cmd.arg("--schema-only")
+                .arg("--no-owner") // Don't include ownership commands
+                .arg("--no-privileges") // We'll handle privileges separately
+                .arg("--verbose"); // Show progress
+
+            // Add table filtering if specified
+            // Only exclude explicit exclude_tables from schema dump (NOT schema_only or predicate tables)
+            if let Some(ref exclude) = exclude_tables {
+                if !exclude.is_empty() {
+                    for table in exclude {
+                        cmd.arg("--exclude-table").arg(table);
+                    }
+                }
             }
-        }
-    }
 
-    // If include_tables is specified, only dump those tables
-    if let Some(include_tables) = get_included_tables_for_db(filter, database) {
-        if !include_tables.is_empty() {
-            for table in include_tables {
-                cmd.arg("--table").arg(&table);
+            // If include_tables is specified, only dump those tables
+            if let Some(ref include) = include_tables {
+                if !include.is_empty() {
+                    for table in include {
+                        cmd.arg("--table").arg(table);
+                    }
+                }
             }
-        }
-    }
 
-    cmd.arg("--host")
-        .arg(&parts.host)
-        .arg("--port")
-        .arg(parts.port.to_string())
-        .arg("--dbname")
-        .arg(&parts.database)
-        .arg(format!("--file={}", output_path))
-        .env("PGPASSFILE", pgpass.path())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
+            cmd.arg("--host")
+                .arg(&parts.host)
+                .arg("--port")
+                .arg(parts.port.to_string())
+                .arg("--dbname")
+                .arg(&parts.database)
+                .arg(format!("--file={}", output_path_owned))
+                .env("PGPASSFILE", pgpass.path())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit());
 
-    // Add username if specified
-    if let Some(user) = &parts.user {
-        cmd.arg("--username").arg(user);
-    }
+            // Add username if specified
+            if let Some(user) = &parts.user {
+                cmd.arg("--username").arg(user);
+            }
 
-    // Apply query parameters as environment variables (SSL, channel_binding, etc.)
-    for (env_var, value) in parts.to_pg_env_vars() {
-        cmd.env(env_var, value);
-    }
+            // Apply query parameters as environment variables (SSL, channel_binding, etc.)
+            for (env_var, value) in &env_vars {
+                cmd.env(env_var, value);
+            }
 
-    let status = cmd.status().context(
-        "Failed to execute pg_dump. Is PostgreSQL client installed?\n\
-         Install with:\n\
-         - Ubuntu/Debian: sudo apt-get install postgresql-client\n\
-         - macOS: brew install postgresql\n\
-         - RHEL/CentOS: sudo yum install postgresql",
-    )?;
-
-    if !status.success() {
-        bail!(
+            cmd.status().context(
+                "Failed to execute pg_dump. Is PostgreSQL client installed?\n\
+                 Install with:\n\
+                 - Ubuntu/Debian: sudo apt-get install postgresql-client\n\
+                 - macOS: brew install postgresql\n\
+                 - RHEL/CentOS: sudo yum install postgresql",
+            )
+        },
+        3,                      // Max 3 retries
+        Duration::from_secs(1), // Start with 1 second delay
+        "pg_dump (dump schema)",
+    )
+    .with_context(|| {
+        format!(
             "pg_dump failed to dump schema for database '{}'.\n\
              \n\
              Common causes:\n\
              - Database does not exist\n\
              - Connection authentication failed\n\
              - User lacks privileges to read database schema\n\
-             - Network connectivity issues",
+             - Network connectivity issues\n\
+             - Connection timeout or network issues",
             database
-        );
-    }
+        )
+    })?;
 
     tracing::info!("✓ Schema dumped successfully");
     Ok(())
@@ -188,65 +213,79 @@ pub async fn dump_data(
     let pgpass = crate::utils::PgPassFile::new(&parts)
         .context("Failed to create .pgpass file for authentication")?;
 
-    let mut cmd = Command::new("pg_dump");
-    cmd.arg("--data-only")
-        .arg("--no-owner")
-        .arg("--format=directory") // Directory format enables parallel operations
-        .arg("--blobs") // Include large objects (blobs)
-        .arg("--compress=9") // Maximum compression for smaller dump size
-        .arg(format!("--jobs={}", num_cpus)) // Parallel dump jobs
-        .arg("--verbose"); // Show progress
+    let env_vars = parts.to_pg_env_vars();
+    let output_path_owned = output_path.to_string();
 
-    // Add table filtering if specified
-    // Exclude explicit excludes, schema_only tables, and predicate tables from data dump
-    if let Some(exclude_tables) = get_data_excluded_tables_for_db(filter, database) {
-        if !exclude_tables.is_empty() {
-            for table in exclude_tables {
-                cmd.arg("--exclude-table-data").arg(&table);
+    // Collect filter options
+    let exclude_tables = get_data_excluded_tables_for_db(filter, database);
+    let include_tables = get_included_tables_for_db(filter, database);
+
+    // Wrap subprocess execution with retry logic
+    crate::utils::retry_subprocess_with_backoff(
+        || {
+            let mut cmd = Command::new("pg_dump");
+            cmd.arg("--data-only")
+                .arg("--no-owner")
+                .arg("--format=directory") // Directory format enables parallel operations
+                .arg("--blobs") // Include large objects (blobs)
+                .arg("--compress=9") // Maximum compression for smaller dump size
+                .arg(format!("--jobs={}", num_cpus)) // Parallel dump jobs
+                .arg("--verbose"); // Show progress
+
+            // Add table filtering if specified
+            // Exclude explicit excludes, schema_only tables, and predicate tables from data dump
+            if let Some(ref exclude) = exclude_tables {
+                if !exclude.is_empty() {
+                    for table in exclude {
+                        cmd.arg("--exclude-table-data").arg(table);
+                    }
+                }
             }
-        }
-    }
 
-    // If include_tables is specified, only dump data for those tables
-    if let Some(include_tables) = get_included_tables_for_db(filter, database) {
-        if !include_tables.is_empty() {
-            for table in include_tables {
-                cmd.arg("--table").arg(&table);
+            // If include_tables is specified, only dump data for those tables
+            if let Some(ref include) = include_tables {
+                if !include.is_empty() {
+                    for table in include {
+                        cmd.arg("--table").arg(table);
+                    }
+                }
             }
-        }
-    }
 
-    cmd.arg("--host")
-        .arg(&parts.host)
-        .arg("--port")
-        .arg(parts.port.to_string())
-        .arg("--dbname")
-        .arg(&parts.database)
-        .arg(format!("--file={}", output_path))
-        .env("PGPASSFILE", pgpass.path())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
+            cmd.arg("--host")
+                .arg(&parts.host)
+                .arg("--port")
+                .arg(parts.port.to_string())
+                .arg("--dbname")
+                .arg(&parts.database)
+                .arg(format!("--file={}", output_path_owned))
+                .env("PGPASSFILE", pgpass.path())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit());
 
-    // Add username if specified
-    if let Some(user) = &parts.user {
-        cmd.arg("--username").arg(user);
-    }
+            // Add username if specified
+            if let Some(user) = &parts.user {
+                cmd.arg("--username").arg(user);
+            }
 
-    // Apply query parameters as environment variables (SSL, channel_binding, etc.)
-    for (env_var, value) in parts.to_pg_env_vars() {
-        cmd.env(env_var, value);
-    }
+            // Apply query parameters as environment variables (SSL, channel_binding, etc.)
+            for (env_var, value) in &env_vars {
+                cmd.env(env_var, value);
+            }
 
-    let status = cmd.status().context(
-        "Failed to execute pg_dump. Is PostgreSQL client installed?\n\
-         Install with:\n\
-         - Ubuntu/Debian: sudo apt-get install postgresql-client\n\
-         - macOS: brew install postgresql\n\
-         - RHEL/CentOS: sudo yum install postgresql",
-    )?;
-
-    if !status.success() {
-        bail!(
+            cmd.status().context(
+                "Failed to execute pg_dump. Is PostgreSQL client installed?\n\
+                 Install with:\n\
+                 - Ubuntu/Debian: sudo apt-get install postgresql-client\n\
+                 - macOS: brew install postgresql\n\
+                 - RHEL/CentOS: sudo yum install postgresql",
+            )
+        },
+        3,                      // Max 3 retries
+        Duration::from_secs(1), // Start with 1 second delay
+        "pg_dump (dump data)",
+    )
+    .with_context(|| {
+        format!(
             "pg_dump failed to dump data for database '{}'.\n\
              \n\
              Common causes:\n\
@@ -255,10 +294,11 @@ pub async fn dump_data(
              - User lacks privileges to read table data\n\
              - Network connectivity issues\n\
              - Insufficient disk space for dump directory\n\
-             - Output directory already exists (pg_dump requires non-existent path)",
+             - Output directory already exists (pg_dump requires non-existent path)\n\
+             - Connection timeout or network issues",
             database
-        );
-    }
+        )
+    })?;
 
     tracing::info!(
         "✓ Data dumped successfully using {} parallel jobs",

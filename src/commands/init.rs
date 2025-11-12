@@ -111,8 +111,11 @@ pub async fn init(
 
     // Step 3: Discover and filter databases
     tracing::info!("Step 3/4: Discovering databases...");
-    let source_client = postgres::connect_with_retry(source_url).await?;
-    let all_databases = migration::list_databases(&source_client).await?;
+    let all_databases = {
+        // Scope the connection so it's dropped before subprocess operations
+        let source_client = postgres::connect_with_retry(source_url).await?;
+        migration::list_databases(&source_client).await?
+    }; // Connection dropped here
 
     // Apply filtering rules
     let databases: Vec<_> = all_databases
@@ -209,9 +212,12 @@ pub async fn init(
     // Estimate database sizes and get confirmation
     if !skip_confirmation {
         tracing::info!("Analyzing database sizes...");
-        let size_estimates =
+        let size_estimates = {
+            // Scope the connection so it's dropped after size estimation
+            let source_client = postgres::connect_with_retry(source_url).await?;
             migration::estimate_database_sizes(source_url, &source_client, &databases, &filter)
-                .await?;
+                .await?
+        }; // Connection dropped here
 
         if !confirm_replication(&size_estimates)? {
             bail!("Replication cancelled by user");
@@ -241,80 +247,83 @@ pub async fn init(
         let target_db_url = replace_database_in_url(target_url, &db_info.name)?;
 
         // Handle database creation atomically to avoid TOCTOU race condition
-        let target_client = postgres::connect_with_retry(target_url).await?;
+        // Scope the connection so it's dropped before dump/restore subprocess operations
+        {
+            let target_client = postgres::connect_with_retry(target_url).await?;
 
-        // Validate database name to prevent SQL injection
-        crate::utils::validate_postgres_identifier(&db_info.name)
-            .with_context(|| format!("Invalid database name: '{}'", db_info.name))?;
+            // Validate database name to prevent SQL injection
+            crate::utils::validate_postgres_identifier(&db_info.name)
+                .with_context(|| format!("Invalid database name: '{}'", db_info.name))?;
 
-        // Try to create database atomically (avoids TOCTOU vulnerability)
-        let create_query = format!("CREATE DATABASE \"{}\"", db_info.name);
-        match target_client.execute(&create_query, &[]).await {
-            Ok(_) => {
-                tracing::info!("  Created database '{}'", db_info.name);
-            }
-            Err(err) => {
-                // Check if error is "database already exists" (error code 42P04)
-                if let Some(db_error) = err.as_db_error() {
-                    if db_error.code() == &tokio_postgres::error::SqlState::DUPLICATE_DATABASE {
-                        // Database already exists - handle based on user preferences
-                        tracing::info!("  Database '{}' already exists on target", db_info.name);
+            // Try to create database atomically (avoids TOCTOU vulnerability)
+            let create_query = format!("CREATE DATABASE \"{}\"", db_info.name);
+            match target_client.execute(&create_query, &[]).await {
+                Ok(_) => {
+                    tracing::info!("  Created database '{}'", db_info.name);
+                }
+                Err(err) => {
+                    // Check if error is "database already exists" (error code 42P04)
+                    if let Some(db_error) = err.as_db_error() {
+                        if db_error.code() == &tokio_postgres::error::SqlState::DUPLICATE_DATABASE {
+                            // Database already exists - handle based on user preferences
+                            tracing::info!("  Database '{}' already exists on target", db_info.name);
 
-                        // Check if empty
-                        if database_is_empty(target_url, &db_info.name).await? {
-                            tracing::info!(
-                                "  Database '{}' is empty, proceeding with restore",
-                                db_info.name
-                            );
-                        } else {
-                            // Database exists and has data
-                            let should_drop = if drop_existing {
-                                // Auto-drop in automated mode with --drop-existing
-                                true
-                            } else if skip_confirmation {
-                                // In automated mode without --drop-existing, fail
-                                bail!(
-                                    "Database '{}' already exists and contains data. \
-                                     Use --drop-existing to overwrite, or manually drop the database first.",
+                            // Check if empty
+                            if database_is_empty(target_url, &db_info.name).await? {
+                                tracing::info!(
+                                    "  Database '{}' is empty, proceeding with restore",
                                     db_info.name
                                 );
                             } else {
-                                // Interactive mode: prompt user
-                                prompt_drop_database(&db_info.name)?
-                            };
+                                // Database exists and has data
+                                let should_drop = if drop_existing {
+                                    // Auto-drop in automated mode with --drop-existing
+                                    true
+                                } else if skip_confirmation {
+                                    // In automated mode without --drop-existing, fail
+                                    bail!(
+                                        "Database '{}' already exists and contains data. \
+                                         Use --drop-existing to overwrite, or manually drop the database first.",
+                                        db_info.name
+                                    );
+                                } else {
+                                    // Interactive mode: prompt user
+                                    prompt_drop_database(&db_info.name)?
+                                };
 
-                            if should_drop {
-                                drop_database_if_exists(&target_client, &db_info.name).await?;
+                                if should_drop {
+                                    drop_database_if_exists(&target_client, &db_info.name).await?;
 
-                                // Recreate the database
-                                let create_query = format!("CREATE DATABASE \"{}\"", db_info.name);
-                                target_client
-                                    .execute(&create_query, &[])
-                                    .await
-                                    .with_context(|| {
-                                        format!(
-                                            "Failed to create database '{}' after drop",
-                                            db_info.name
-                                        )
-                                    })?;
-                                tracing::info!("  Created database '{}'", db_info.name);
-                            } else {
-                                bail!("Aborted: Database '{}' already exists", db_info.name);
+                                    // Recreate the database
+                                    let create_query = format!("CREATE DATABASE \"{}\"", db_info.name);
+                                    target_client
+                                        .execute(&create_query, &[])
+                                        .await
+                                        .with_context(|| {
+                                            format!(
+                                                "Failed to create database '{}' after drop",
+                                                db_info.name
+                                            )
+                                        })?;
+                                    tracing::info!("  Created database '{}'", db_info.name);
+                                } else {
+                                    bail!("Aborted: Database '{}' already exists", db_info.name);
+                                }
                             }
+                        } else {
+                            // Some other database error - propagate it
+                            return Err(err).with_context(|| {
+                                format!("Failed to create database '{}'", db_info.name)
+                            });
                         }
                     } else {
-                        // Some other database error - propagate it
-                        return Err(err).with_context(|| {
-                            format!("Failed to create database '{}'", db_info.name)
-                        });
+                        // Not a database error - propagate it
+                        return Err(err)
+                            .with_context(|| format!("Failed to create database '{}'", db_info.name));
                     }
-                } else {
-                    // Not a database error - propagate it
-                    return Err(err)
-                        .with_context(|| format!("Failed to create database '{}'", db_info.name));
                 }
             }
-        }
+        } // Connection dropped here before dump/restore operations
 
         // Dump and restore schema
         tracing::info!("  Dumping schema for '{}'...", db_info.name);
@@ -382,8 +391,11 @@ pub async fn init(
     let mut should_enable_sync = enable_sync;
     if enable_sync {
         tracing::info!("Checking target wal_level for logical replication...");
-        let target_client = postgres::connect_with_retry(target_url).await?;
-        let target_wal_level = postgres::check_wal_level(&target_client).await?;
+        let target_wal_level = {
+            // Scope the connection for quick wal_level check
+            let target_client = postgres::connect_with_retry(target_url).await?;
+            postgres::check_wal_level(&target_client).await?
+        }; // Connection dropped here
 
         if target_wal_level != "logical" {
             tracing::warn!("");
