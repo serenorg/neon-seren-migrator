@@ -8,10 +8,86 @@ use postgres_native_tls::MakeTlsConnector;
 use std::time::Duration;
 use tokio_postgres::Client;
 
+/// Add TCP keepalive parameters to a PostgreSQL connection string
+///
+/// Automatically adds keepalive parameters to prevent idle connection timeouts
+/// when connecting through load balancers (like AWS ELB). These parameters ensure
+/// that TCP keepalive packets are sent regularly to keep the connection alive.
+///
+/// Parameters added:
+/// - `keepalives=1`: Enable TCP keepalives
+/// - `keepalives_idle=60`: Send first keepalive after 60 seconds of idle time
+/// - `keepalives_interval=10`: Send subsequent keepalives every 10 seconds
+///
+/// If any of these parameters already exist in the connection string, they are
+/// not overwritten.
+///
+/// # Arguments
+///
+/// * `connection_string` - Original PostgreSQL connection URL
+///
+/// # Returns
+///
+/// Connection string with keepalive parameters added
+///
+/// # Examples
+///
+/// ```
+/// # use postgres_seren_replicator::postgres::connection::add_keepalive_params;
+/// let url = "postgresql://user:pass@host:5432/db";
+/// let url_with_keepalives = add_keepalive_params(url);
+/// assert!(url_with_keepalives.contains("keepalives=1"));
+/// assert!(url_with_keepalives.contains("keepalives_idle=60"));
+/// assert!(url_with_keepalives.contains("keepalives_interval=10"));
+/// ```
+pub fn add_keepalive_params(connection_string: &str) -> String {
+    // Parse to check if params already exist
+    let has_query = connection_string.contains('?');
+    let lower = connection_string.to_lowercase();
+
+    let needs_keepalives = !lower.contains("keepalives=");
+    let needs_idle = !lower.contains("keepalives_idle=");
+    let needs_interval = !lower.contains("keepalives_interval=");
+
+    // If all params already exist, return as-is
+    if !needs_keepalives && !needs_idle && !needs_interval {
+        return connection_string.to_string();
+    }
+
+    let mut url = connection_string.to_string();
+    let separator = if has_query { "&" } else { "?" };
+
+    // Add missing keepalive parameters
+    let mut params = Vec::new();
+    if needs_keepalives {
+        params.push("keepalives=1");
+    }
+    if needs_idle {
+        params.push("keepalives_idle=60");
+    }
+    if needs_interval {
+        params.push("keepalives_interval=10");
+    }
+
+    if !params.is_empty() {
+        url.push_str(separator);
+        url.push_str(&params.join("&"));
+    }
+
+    url
+}
+
 /// Connect to PostgreSQL database with TLS support
 ///
 /// Establishes a connection using the provided connection string with TLS enabled.
 /// The connection lifecycle is managed automatically via tokio spawn.
+///
+/// **Automatic Keepalive:** This function automatically adds TCP keepalive parameters
+/// to prevent idle connection timeouts when connecting through load balancers.
+/// The following parameters are added if not already present:
+/// - `keepalives=1`
+/// - `keepalives_idle=60`
+/// - `keepalives_interval=10`
 ///
 /// # Arguments
 ///
@@ -43,8 +119,11 @@ use tokio_postgres::Client;
 /// # }
 /// ```
 pub async fn connect(connection_string: &str) -> Result<Client> {
+    // Add keepalive parameters to prevent idle connection timeouts
+    let connection_string_with_keepalive = add_keepalive_params(connection_string);
+
     // Parse connection string
-    let _config = connection_string
+    let _config = connection_string_with_keepalive
         .parse::<tokio_postgres::Config>()
         .context(
         "Invalid connection string format. Expected: postgresql://user:password@host:port/database",
@@ -57,8 +136,8 @@ pub async fn connect(connection_string: &str) -> Result<Client> {
         .context("Failed to build TLS connector")?;
     let tls = MakeTlsConnector::new(tls_connector);
 
-    // Connect
-    let (client, connection) = tokio_postgres::connect(connection_string, tls)
+    // Connect with keepalive parameters
+    let (client, connection) = tokio_postgres::connect(&connection_string_with_keepalive, tls)
         .await
         .map_err(|e| {
             // Parse error and provide helpful context
@@ -164,6 +243,67 @@ pub async fn connect_with_retry(connection_string: &str) -> Result<Client> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_add_keepalive_params_to_url_without_query() {
+        let url = "postgresql://user:pass@host:5432/db";
+        let result = add_keepalive_params(url);
+
+        assert!(result.contains("keepalives=1"));
+        assert!(result.contains("keepalives_idle=60"));
+        assert!(result.contains("keepalives_interval=10"));
+        assert!(result.starts_with("postgresql://user:pass@host:5432/db?"));
+    }
+
+    #[test]
+    fn test_add_keepalive_params_to_url_with_existing_query() {
+        let url = "postgresql://user:pass@host:5432/db?sslmode=require";
+        let result = add_keepalive_params(url);
+
+        assert!(result.contains("keepalives=1"));
+        assert!(result.contains("keepalives_idle=60"));
+        assert!(result.contains("keepalives_interval=10"));
+        assert!(result.contains("sslmode=require"));
+        // Should use & separator not ?
+        assert!(result.contains("&keepalives=1"));
+    }
+
+    #[test]
+    fn test_add_keepalive_params_already_present() {
+        let url =
+            "postgresql://user:pass@host:5432/db?keepalives=1&keepalives_idle=60&keepalives_interval=10";
+        let result = add_keepalive_params(url);
+
+        // Should return unchanged
+        assert_eq!(result, url);
+    }
+
+    #[test]
+    fn test_add_keepalive_params_partial_existing() {
+        let url = "postgresql://user:pass@host:5432/db?keepalives=1";
+        let result = add_keepalive_params(url);
+
+        // Should only add missing params
+        assert!(result.contains("keepalives=1"));
+        assert!(result.contains("keepalives_idle=60"));
+        assert!(result.contains("keepalives_interval=10"));
+        // Should not duplicate keepalives=1
+        assert_eq!(result.matches("keepalives=1").count(), 1);
+    }
+
+    #[test]
+    fn test_add_keepalive_params_case_insensitive() {
+        let url = "postgresql://user:pass@host:5432/db?KEEPALIVES=1";
+        let result = add_keepalive_params(url);
+
+        // Should detect uppercase params and still add the missing ones
+        assert!(result.contains("KEEPALIVES=1"));
+        assert!(result.contains("keepalives_idle=60"));
+        assert!(result.contains("keepalives_interval=10"));
+        // Should not add lowercase keepalives=1 because KEEPALIVES=1 already exists
+        let lower_result = result.to_lowercase();
+        assert_eq!(lower_result.matches("keepalives=1").count(), 1);
+    }
 
     #[tokio::test]
     async fn test_connect_with_invalid_url_returns_error() {

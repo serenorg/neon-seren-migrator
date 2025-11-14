@@ -5,7 +5,7 @@ pub mod connection;
 pub mod extensions;
 pub mod privileges;
 
-pub use connection::{connect, connect_with_retry};
+pub use connection::{add_keepalive_params, connect, connect_with_retry};
 pub use extensions::{
     get_available_extensions, get_installed_extensions, get_preloaded_libraries, requires_preload,
     AvailableExtension, Extension,
