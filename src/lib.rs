@@ -8,6 +8,7 @@ pub mod filters;
 pub mod interactive;
 pub mod migration;
 pub mod postgres;
+pub mod remote;
 pub mod replication;
 pub mod table_rules;
 pub mod utils;
