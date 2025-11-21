@@ -1,0 +1,24 @@
+output "api_endpoint" {
+  description = "API Gateway endpoint URL for remote replication"
+  value       = aws_apigatewayv2_api.api.api_endpoint
+}
+
+output "dynamodb_table_name" {
+  description = "DynamoDB table name for job state"
+  value       = aws_dynamodb_table.replication_jobs.name
+}
+
+output "lambda_function_name" {
+  description = "Lambda function name"
+  value       = aws_lambda_function.coordinator.function_name
+}
+
+output "worker_iam_role_name" {
+  description = "IAM role name for worker instances"
+  value       = aws_iam_role.worker_role.name
+}
+
+output "worker_instance_profile_name" {
+  description = "IAM instance profile name for worker instances"
+  value       = aws_iam_instance_profile.worker_profile.name
+}

@@ -19,6 +19,13 @@ Cargo.lock
 .DS_Store
 Thumbs.db
 
+# AWS/Terraform
+aws/lambda/*.zip
+aws/terraform/.terraform/
+aws/terraform/.terraform.lock.hcl
+aws/terraform/terraform.tfstate
+aws/terraform/terraform.tfstate.backup
+aws/terraform/*.tfvars
 
 # Added by cargo
 #
