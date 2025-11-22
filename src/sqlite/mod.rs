@@ -1,6 +1,7 @@
 // ABOUTME: SQLite database reading utilities for migration to PostgreSQL
 // ABOUTME: Provides secure file path validation and read-only database connections
 
+pub mod converter;
 pub mod reader;
 
 use anyhow::{bail, Context, Result};
