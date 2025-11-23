@@ -881,15 +881,14 @@ pub async fn init_mongodb_to_postgres(mongo_url: &str, target_url: &str) -> Resu
         );
 
         // Convert MongoDB collection to JSONB
-        let rows =
-            crate::mongodb::converter::convert_collection_to_jsonb(&db, collection_name)
-                .await
-                .with_context(|| {
-                    format!(
-                        "Failed to convert collection '{}' to JSONB",
-                        collection_name
-                    )
-                })?;
+        let rows = crate::mongodb::converter::convert_collection_to_jsonb(&db, collection_name)
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to convert collection '{}' to JSONB",
+                    collection_name
+                )
+            })?;
 
         tracing::info!(
             "  ✓ Converted {} documents from '{}'",
