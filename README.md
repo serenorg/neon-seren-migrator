@@ -5,63 +5,133 @@
 [![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue.svg)](https://www.rust-lang.org)
 [![Latest Release](https://img.shields.io/github/v/release/serenorg/postgres-seren-replicator)](https://github.com/serenorg/postgres-seren-replicator/releases)
 
-Zero-downtime PostgreSQL replication tool from PostgreSQL to Seren with continuous sync and real-time monitoring.
+## Universal database-to-PostgreSQL replication for AI agents
+
+Migrate any database to PostgreSQL with zero downtime. Supports PostgreSQL, SQLite, MongoDB, and MySQL/MariaDB.
+
+---
 
 ## Overview
 
-This tool enables safe, zero-downtime replication of PostgreSQL databases from any PostgreSQL provider (Neon, AWS RDS, Hetzner, self-hosted, etc.) to Seren Cloud. It uses PostgreSQL's logical replication for continuous data synchronization with real-time monitoring and supports selective replication for fine-grained control over what gets replicated.
+`postgres-seren-replicator` is a command-line tool that replicates databases from multiple sources to PostgreSQL (including Seren Cloud). It automatically detects your source database type and handles the migration accordingly:
+
+- **PostgreSQL**: Zero-downtime replication with continuous sync via logical replication
+- **SQLite**: One-time migration using JSONB storage
+- **MongoDB**: One-time migration with JSONB storage and periodic refresh support
+- **MySQL/MariaDB**: One-time migration with JSONB storage and periodic refresh support
+
+### Why This Tool?
+
+- **Multi-database support**: Single tool for all your database migrations
+- **AI-friendly storage**: Non-PostgreSQL sources use JSONB for flexible querying
+- **Zero downtime**: PostgreSQL-to-PostgreSQL replication with continuous sync
+- **Remote execution**: Run migrations on SerenAI cloud infrastructure
+- **Production-ready**: Data integrity verification, checkpointing, and error handling
+
+---
+
+## Supported Databases
+
+| Source Database | Migration Type | Continuous Sync | Periodic Refresh | Remote Execution |
+|----------------|----------------|-----------------|------------------|------------------|
+| **PostgreSQL** | Native replication | ✅ Logical replication | N/A | ✅ Yes |
+| **SQLite** | JSONB storage | ❌ One-time | ❌ No | ❌ Local only |
+| **MongoDB** | JSONB storage | ❌ One-time | ✅ 24hr default | ✅ Yes |
+| **MySQL/MariaDB** | JSONB storage | ❌ One-time | ✅ 24hr default | ✅ Yes |
+
+---
+
+## Quick Start
+
+Choose your source database to get started:
+
+### PostgreSQL → PostgreSQL
+
+Zero-downtime replication with continuous sync:
+
+```bash
+postgres-seren-replicator init \
+  --source "postgresql://user:pass@source-host:5432/db" \
+  --target "postgresql://user:pass@target-host:5432/db"
+```
+
+**[📖 Full PostgreSQL Guide →](README-PostgreSQL.md)** *(Coming soon - see current README for PostgreSQL details)*
+
+---
+
+### SQLite → PostgreSQL
+
+One-time migration to JSONB storage:
+
+```bash
+postgres-seren-replicator init \
+  --source /path/to/database.db \
+  --target "postgresql://user:pass@host:5432/db"
+```
+
+**[📖 Full SQLite Guide →](README-SQLite.md)**
+
+---
+
+### MongoDB → PostgreSQL
+
+One-time migration with periodic refresh support:
+
+```bash
+postgres-seren-replicator init \
+  --source "mongodb://user:pass@host:27017/db" \
+  --target "postgresql://user:pass@host:5432/db"
+```
+
+**[📖 Full MongoDB Guide →](README-MongoDB.md)**
+
+---
+
+### MySQL/MariaDB → PostgreSQL
+
+One-time migration with periodic refresh support:
+
+```bash
+postgres-seren-replicator init \
+  --source "mysql://user:pass@host:3306/db" \
+  --target "postgresql://user:pass@host:5432/db"
+```
+
+**[📖 Full MySQL Guide →](README-MySQL.md)**
+
+---
 
 ## Features
 
-- **Zero Downtime**: Uses logical replication to keep databases continuously in sync
-- **Selective Replication**: Choose specific databases and tables to replicate
-- **Interactive Mode**: User-friendly terminal UI for selecting what to replicate
-- **Multi-Provider Support**: Works with any PostgreSQL provider (Neon, AWS RDS, Hetzner, self-hosted, etc.)
-- **Size Estimation**: Analyze database sizes and view estimated replication times before starting
-- **High Performance**: Parallel dump/restore with automatic CPU core detection
-- **Optimized Compression**: Maximum compression (level 9) for faster transfers
-- **Large Object Support**: Handles BLOBs and large binary objects efficiently
-- **Complete Replication**: Replicates schema, data, roles, and permissions
-- **Data Validation**: Checksum-based verification of data integrity
-- **Real-time Monitoring**: Track replication lag and status continuously
-- **Safe & Fail-fast**: Validates prerequisites before starting replication
+### PostgreSQL-to-PostgreSQL
 
-## Supported Source Databases
+- **Zero-downtime replication** using PostgreSQL logical replication
+- **Continuous sync** keeps databases in sync in real-time
+- **Selective replication** with database and table-level filtering
+- **Interactive mode** for selecting databases and tables
+- **Remote execution** on SerenAI cloud infrastructure
+- **Data integrity verification** with checksums
 
-The tool automatically detects your source database type and handles replication accordingly:
+### Non-PostgreSQL Sources (SQLite, MongoDB, MySQL)
 
-- **PostgreSQL** (Primary use case): Zero-downtime replication with continuous sync
-  - Uses logical replication for real-time data synchronization
-  - Supports selective replication with filtering
-  - See below for standard PostgreSQL-to-PostgreSQL workflow
+- **JSONB storage** preserves data fidelity for querying in PostgreSQL
+- **Type preservation** with special encoding for complex types
+- **One-time migration** for initial data transfer
+- **Periodic refresh** (MongoDB, MySQL) for keeping data up to date
+- **Schema-aware filtering** for precise table targeting
+- **Remote execution** (MongoDB, MySQL) on cloud infrastructure
 
-- **SQLite**: One-time migration to PostgreSQL using JSONB storage
-  - See [README-SQLite.md](README-SQLite.md) for SQLite-specific guide
+### Universal Features
 
-- **MongoDB**: One-time migration to PostgreSQL using JSONB storage
-  - See [README-MongoDB.md](README-MongoDB.md) for MongoDB-specific guide
+- **Multi-provider support**: Works with any PostgreSQL provider (Neon, AWS RDS, Hetzner, self-hosted)
+- **Size estimation**: Analyze database sizes before migration
+- **High performance**: Parallel operations with automatic CPU detection
+- **Checkpointing**: Resume interrupted migrations automatically
+- **Security**: Credentials passed via `.pgpass` files, never in command output
 
-- **MySQL/MariaDB**: One-time migration to PostgreSQL using JSONB storage
-  - See [README-MySQL.md](README-MySQL.md) for MySQL/MariaDB-specific guide
-
-**Note**: SQLite, MongoDB, and MySQL sources use JSONB storage in PostgreSQL and support one-time migration only (no continuous sync). PostgreSQL-to-PostgreSQL replication supports continuous sync with logical replication.
-
-## Replication Workflow
-
-The replication process follows 5 phases:
-
-1. **Validate** - Check source and target databases meet replication requirements
-2. **Init** - Perform initial snapshot replication (schema + data) using pg_dump/restore
-3. **Sync** - Set up continuous logical replication between databases
-4. **Status** - Monitor replication lag and health in real-time
-5. **Verify** - Validate data integrity with checksums
+---
 
 ## Installation
-
-### Prerequisites
-
-- PostgreSQL client tools (pg_dump, pg_dumpall, psql)
-- Access to both source and target databases with appropriate permissions
 
 ### Download Pre-built Binaries
 
@@ -90,20 +160,44 @@ cargo build --release
 
 The binary will be available at `target/release/postgres-seren-replicator`.
 
-### Target Database Setup (Optional)
+### Prerequisites
 
-**SerenDB Account**: If you want to replicate to SerenDB, you can create a free account at <https://console.serendb.com/signup>. This will provide you with a managed PostgreSQL database optimized for your workload.
+- **PostgreSQL client tools** (pg_dump, pg_dumpall, psql) - Required for all database types
+- **Source database access**: Connection credentials and appropriate permissions
+- **Target database access**: PostgreSQL connection with write permissions
 
-**Note**: SerenDB is completely optional. This tool works with any PostgreSQL-compatible database as your target, including:
+---
 
-- SerenDB (managed PostgreSQL)
-- AWS RDS PostgreSQL
-- Self-hosted PostgreSQL
-- Neon, Supabase, or any other PostgreSQL provider
+## Documentation
 
-You only need a SerenDB account if you specifically want to use SerenDB as your replication target.
+### Database-Specific Guides
 
-## Usage
+- **[PostgreSQL to PostgreSQL](README-PostgreSQL.md)** - Zero-downtime replication with logical replication *(Guide coming soon - see sections below for PostgreSQL details)*
+- **[SQLite to PostgreSQL](README-SQLite.md)** - One-time migration using JSONB storage
+- **[MongoDB to PostgreSQL](README-MongoDB.md)** - One-time migration with periodic refresh support
+- **[MySQL/MariaDB to PostgreSQL](README-MySQL.md)** - One-time migration with periodic refresh support
+
+### Additional Documentation
+
+- **[Replication Configuration Guide](docs/replication-config.md)** - Advanced filtering with TOML config files
+- **[AWS Setup Guide](docs/aws-setup.md)** - Remote execution infrastructure details
+- **[CI/CD Guide](docs/cicd.md)** - Automated testing and deployment
+
+---
+
+## PostgreSQL-to-PostgreSQL Replication
+
+*The sections below provide detailed PostgreSQL replication documentation. This will be moved to README-PostgreSQL.md in a future update.*
+
+### Replication Workflow
+
+The PostgreSQL replication process follows 5 phases:
+
+1. **Validate** - Check source and target databases meet replication requirements
+2. **Init** - Perform initial snapshot replication (schema + data) using pg_dump/restore
+3. **Sync** - Set up continuous logical replication between databases
+4. **Status** - Monitor replication lag and health in real-time
+5. **Verify** - Validate data integrity with checksums
 
 ### 1. Validate Databases
 
@@ -126,7 +220,8 @@ Perform initial snapshot replication. The tool will first analyze database sizes
 ```
 
 Example output:
-```
+
+```text
 Analyzing database sizes...
 
 Database             Size         Est. Time
@@ -237,7 +332,7 @@ The tool will:
 
 Example output:
 
-```
+```text
 Submitting replication job...
 ✓ Job submitted
 Job ID: 550e8400-e29b-41d4-a716-446655440000
@@ -291,7 +386,7 @@ export SEREN_REMOTE_API="https://dev.api.seren.cloud/replication"
   --job-timeout 43200
 ```
 
-### Troubleshooting
+### Remote Execution Troubleshooting
 
 #### "Failed to submit job to remote service"
 
@@ -578,7 +673,7 @@ To use CLI filter flags instead of interactive mode, add the `--no-interactive` 
 
 ### Example Interactive Session
 
-```
+```text
 Connecting to source database...
 ✓ Connected to source
 
@@ -814,16 +909,18 @@ export TEST_TARGET_URL="postgresql://postgres:postgres@localhost:5433/postgres"
 
 ### Source Database
 
-- PostgreSQL 12 or later
-- Replication privilege (`REPLICATION` role attribute)
-- Ability to create publications
+- PostgreSQL 12 or later (for PostgreSQL sources)
+- SQLite 3.x (for SQLite sources)
+- MongoDB 4.0+ (for MongoDB sources)
+- MySQL 5.7+ or MariaDB 10.2+ (for MySQL/MariaDB sources)
+- Appropriate privileges for source database type
 
-### Target Database (Seren)
+### Target Database
 
 - PostgreSQL 12 or later
-- Superuser or database owner privileges
-- Ability to create subscriptions
-- Network connectivity to source database
+- Database owner or superuser privileges
+- Ability to create tables and schemas
+- Network connectivity to source database (for continuous replication)
 
 ## Performance Optimizations
 
@@ -855,6 +952,9 @@ These optimizations can significantly reduce replication time, especially for la
 - **src/postgres/** - PostgreSQL connection and utilities
 - **src/migration/** - Schema introspection, dump/restore, checksums
 - **src/replication/** - Logical replication management
+- **src/sqlite/** - SQLite reader and JSONB conversion
+- **src/mongodb/** - MongoDB reader and BSON to JSONB conversion
+- **src/mysql/** - MySQL reader and JSONB conversion
 - **tests/** - Integration tests
 
 ## Troubleshooting
@@ -864,10 +964,10 @@ These optimizations can significantly reduce replication time, especially for la
 Ensure your user has the required privileges:
 
 ```sql
--- On source (Neon)
+-- On source (PostgreSQL)
 ALTER USER myuser WITH REPLICATION;
 
--- On target (Seren)
+-- On target (PostgreSQL)
 ALTER USER myuser WITH SUPERUSER;
 ```
 
@@ -909,6 +1009,7 @@ postgres-seren-replicator init \
 ```
 
 Example config with FK-related tables:
+
 ```toml
 [databases.mydb]
 
@@ -923,6 +1024,18 @@ where = "id IN (SELECT user_id FROM orders WHERE created_at > NOW() - INTERVAL '
 ```
 
 **Alternative:** If you don't want to replicate the related tables, remove the foreign key constraint before replication.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+### Development
+
+See [CLAUDE.md](CLAUDE.md) for development guidelines and practices.
+
+### Reporting Issues
+
+Please report bugs and feature requests on the [GitHub Issues](https://github.com/serenorg/postgres-seren-replicator/issues) page.
 
 ## License
 
