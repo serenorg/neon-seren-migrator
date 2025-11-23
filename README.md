@@ -177,12 +177,6 @@ The binary will be available at `target/release/seren-replicator`.
 - **[MongoDB to PostgreSQL](README-MongoDB.md)** - One-time migration with periodic refresh support
 - **[MySQL/MariaDB to PostgreSQL](README-MySQL.md)** - One-time migration with periodic refresh support
 
-### Additional Documentation
-
-- **[Replication Configuration Guide](docs/replication-config.md)** - Advanced filtering with TOML config files
-- **[AWS Setup Guide](docs/aws-setup.md)** - Remote execution infrastructure details
-- **[CI/CD Guide](docs/cicd.md)** - Automated testing and deployment
-
 ---
 
 ## PostgreSQL-to-PostgreSQL Replication
