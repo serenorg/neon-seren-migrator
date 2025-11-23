@@ -385,10 +385,6 @@ For more details on the AWS infrastructure and architecture, see the [AWS Setup 
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-### Development
-
-See [CLAUDE.md](CLAUDE.md) for development guidelines and practices.
-
 ### Reporting Issues
 
 Please report bugs and feature requests on the [GitHub Issues](https://github.com/serenorg/seren-replicator/issues) page.
