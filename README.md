@@ -250,7 +250,7 @@ By default, the `init` command uses **SerenAI's managed cloud service** to execu
 
 When you run `init` without the `--local` flag, the tool:
 
-1. **Submits your job** to SerenAI's API with encrypted credentials
+1. **Submits your job** to SerenDB's managed API with encrypted credentials
 2. **Provisions an EC2 worker** sized appropriately for your database
 3. **Executes replication** on the cloud worker
 4. **Monitors progress** and shows you real-time status updates
@@ -263,7 +263,7 @@ Your database credentials are encrypted with AWS KMS and never logged or stored 
 Remote execution is the default - just run `init` as normal:
 
 ```bash
-# Runs on SerenAI's cloud infrastructure (default)
+# Runs on SerenDB's managed cloud infrastructure (default)
 ./seren-replicator init \
   --source "postgresql://user:pass@source-host:5432/db" \
   --target "postgresql://user:pass@seren-host:5432/db"
@@ -271,7 +271,7 @@ Remote execution is the default - just run `init` as normal:
 
 The tool will:
 
-- Submit the job to <https://api.seren.cloud/replication>
+- Submit the job to SerenDB's managed API
 - Show you the job ID and trace ID for monitoring
 - Poll for status updates and display progress
 - Report success or failure when complete
@@ -316,7 +316,8 @@ Local execution is useful when:
 #### Custom API endpoint (for testing or development)
 
 ```bash
-export SEREN_REMOTE_API="https://dev.api.seren.cloud/replication"
+# Override the default API endpoint if needed
+export SEREN_REMOTE_API="https://your-custom-endpoint.example.com"
 ./seren-replicator init \
   --source "..." \
   --target "..."
@@ -337,7 +338,7 @@ export SEREN_REMOTE_API="https://dev.api.seren.cloud/replication"
 #### "Failed to submit job to remote service"
 
 - Check your internet connection
-- Verify you can reach <https://api.seren.cloud>
+- Verify you can reach SerenDB's API endpoint
 - Try with `--local` as a fallback
 
 #### Job stuck in "provisioning" state

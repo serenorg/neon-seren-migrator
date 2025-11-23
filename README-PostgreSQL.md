@@ -650,7 +650,7 @@ seren-replicator init \
 
 The tool will:
 
-- Submit the job to <https://api.seren.cloud/replication>
+- Submit the job to SerenDB's managed API
 - Show you the job ID and trace ID for monitoring
 - Poll for status updates and display progress
 - Report success or failure when complete
@@ -716,7 +716,7 @@ seren-replicator init \
 #### "Failed to submit job to remote service"
 
 - Check your internet connection
-- Verify you can reach <https://api.seren.cloud>
+- Verify you can reach SerenDB's API endpoint
 - Try with `--local` as a fallback
 
 #### Job stuck in "provisioning" state

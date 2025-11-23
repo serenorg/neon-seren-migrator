@@ -91,11 +91,11 @@ enum Commands {
         /// Execute replication locally instead of using SerenAI's managed service (fallback mode)
         #[arg(long)]
         local: bool,
-        /// API endpoint for remote execution (defaults to Seren's API)
+        /// API endpoint for remote execution (defaults to SerenDB's managed API)
         #[arg(
             long,
             default_value_t = std::env::var("SEREN_REMOTE_API")
-                .unwrap_or_else(|_| "https://api.seren.cloud/replication".to_string())
+                .unwrap_or_else(|_| "https://79cfok1msj.execute-api.us-east-1.amazonaws.com".to_string())
         )]
         remote_api: String,
         /// Maximum job duration in seconds before timeout (default: 28800 = 8 hours)

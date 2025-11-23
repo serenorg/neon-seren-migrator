@@ -189,7 +189,7 @@ All notable changes to this project will be documented in this file.
 
 - `init` command now uses remote execution by default (use `--local` to run locally)
 - Job specifications now require `schema_version` field (current: "1.0")
-- API endpoint standardized to `https://api.seren.cloud/replication`
+- API endpoint uses SerenDB's managed infrastructure
 
 ### Improved
 
